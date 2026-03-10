@@ -104,6 +104,9 @@ func (r *BotRouter) cmdList(p Platform, msg *Message) {
 			_ = p.Reply(context.Background(), msg.ReplyCtx, fmt.Sprintf("Project scan failed: %v", err))
 		} else if catalog != nil {
 			r.Catalog = catalog
+			if r.Runtimes != nil {
+				r.Runtimes.SetCatalog(catalog)
+			}
 		}
 	}
 	if r.Catalog == nil || len(r.Catalog.Projects) == 0 {

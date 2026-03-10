@@ -48,6 +48,12 @@ func NewBotRuntimeManager(catalog *ProjectCatalog, maxCache int, create RuntimeF
 	}
 }
 
+func (m *BotRuntimeManager) SetCatalog(catalog *ProjectCatalog) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.catalog = catalog
+}
+
 func (m *BotRuntimeManager) GetOrCreate(botID, projectName string) (*ProjectRuntime, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

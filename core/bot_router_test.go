@@ -152,6 +152,60 @@ func TestBotRouterProjectCommandListRefreshesCatalog(t *testing.T) {
 	}
 }
 
+func TestBotRouterCanSwitchToProjectDiscoveredByRefresh(t *testing.T) {
+	p := &plainBotPlatform{n: "test"}
+	initialCatalog := &ProjectCatalog{
+		Root: "/workspace",
+		Projects: map[string]ProjectInfo{
+			"repo-old": {Name: "repo-old", Path: "/workspace/repo-old", GitRoot: "/workspace/repo-old"},
+		},
+	}
+	refreshedCatalog := &ProjectCatalog{
+		Root: "/workspace",
+		Projects: map[string]ProjectInfo{
+			"repo-old": {Name: "repo-old", Path: "/workspace/repo-old", GitRoot: "/workspace/repo-old"},
+			"repo-new": {Name: "repo-new", Path: "/workspace/repo-new", GitRoot: "/workspace/repo-new"},
+		},
+	}
+	router := &BotRouter{
+		BotID:   "bot-a",
+		DMOnly:  true,
+		Catalog: initialCatalog,
+		Bindings: NewBindingStore(""),
+		Runtimes: NewBotRuntimeManager(initialCatalog, 2, func(botID string, proj ProjectInfo) (*ProjectRuntime, error) {
+			return &ProjectRuntime{
+				BotID:     botID,
+				Project:   proj,
+				Engine:    newTestEngine(),
+				CloseFunc: func() error { return nil },
+			}, nil
+		}),
+		RefreshCatalog: func() (*ProjectCatalog, error) {
+			return refreshedCatalog, nil
+		},
+	}
+
+	router.HandleMessage(p, &Message{
+		Platform: "telegram",
+		UserID:   "u1",
+		IsDM:     true,
+		Content:  "/project-list",
+	})
+	router.HandleMessage(p, &Message{
+		Platform: "telegram",
+		UserID:   "u1",
+		IsDM:     true,
+		Content:  "/project switch repo-new",
+	})
+
+	if len(p.sent) < 2 {
+		t.Fatalf("sent = %v, want list response and switch response", p.sent)
+	}
+	if p.sent[1] != "Switched to project repo-new." {
+		t.Fatalf("switch reply = %q, want successful switch to refreshed project", p.sent[1])
+	}
+}
+
 func TestBotRouterProjectSwitchAndCurrent(t *testing.T) {
 	p := &stubPlatformEngine{n: "test"}
 	router := newTestBotRouter(p)
