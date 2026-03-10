@@ -219,13 +219,21 @@ func (p *Platform) handleMessage(payload map[string]any) {
 	msg := &core.Message{
 		SessionKey: sessionKey,
 		Platform:   "qq",
-		MessageID:  strconv.FormatInt(messageID, 10),
-		UserID:     strconv.FormatInt(userID, 10),
-		UserName:   userName,
-		Content:    text,
-		Images:     images,
-		Audio:      audio,
-		ReplyCtx:   rctx,
+		ChatID: func() string {
+			if msgType == "group" {
+				return strconv.FormatInt(groupID, 10)
+			}
+			return strconv.FormatInt(userID, 10)
+		}(),
+		BotID:     strconv.FormatInt(p.selfID, 10),
+		MessageID: strconv.FormatInt(messageID, 10),
+		UserID:    strconv.FormatInt(userID, 10),
+		UserName:  userName,
+		Content:   text,
+		Images:    images,
+		Audio:     audio,
+		ReplyCtx:  rctx,
+		IsDM:      msgType != "group",
 	}
 
 	slog.Debug("qq: message received", "type", msgType, "user", userID, "text_len", len(text))

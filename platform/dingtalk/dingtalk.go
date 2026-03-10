@@ -115,11 +115,14 @@ func (p *Platform) onMessage(data *chatbot.BotCallbackDataModel) {
 	msg := &core.Message{
 		SessionKey: sessionKey,
 		Platform:   "dingtalk",
+		ChatID:     data.ConversationId,
+		BotID:      data.ChatbotUserId,
 		UserID:     data.SenderStaffId,
 		UserName:   data.SenderNick,
 		Content:    data.Text.Content,
 		MessageID:  data.MsgId,
 		ReplyCtx:   replyContext{sessionWebhook: data.SessionWebhook},
+		IsDM:       strings.EqualFold(data.ConversationType, "1To1"),
 	}
 
 	p.handler(p, msg)

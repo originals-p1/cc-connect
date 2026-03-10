@@ -61,12 +61,15 @@ type Message struct {
 	SessionKey string // unique key for user context, e.g. "feishu:{chatID}:{userID}"
 	Platform   string
 	MessageID  string // platform message ID for tracing
+	ChatID     string
+	BotID      string
 	UserID     string
 	UserName   string
 	Content    string
 	Images     []ImageAttachment // attached images (if any)
 	Audio      *AudioAttachment  // voice message (if any)
 	ReplyCtx   any               // platform-specific context needed for replying
+	IsDM       bool              // true when the message comes from a direct/private chat
 	FromVoice  bool              // true if message originated from voice transcription
 }
 

@@ -271,9 +271,12 @@ func (p *Platform) onMessage(event *larkim.P2MessageReceiveV1) error {
 		}
 		p.handler(p, &core.Message{
 			SessionKey: sessionKey, Platform: "feishu",
+			ChatID:    chatID,
+			BotID:     p.botOpenID,
 			MessageID: messageID,
-			UserID: userID, UserName: userName,
+			UserID:    userID, UserName: userName,
 			Content: text, ReplyCtx: rctx,
+			IsDM: chatType == "p2p",
 		})
 
 	case "image":
@@ -291,10 +294,13 @@ func (p *Platform) onMessage(event *larkim.P2MessageReceiveV1) error {
 		}
 		p.handler(p, &core.Message{
 			SessionKey: sessionKey, Platform: "feishu",
+			ChatID:    chatID,
+			BotID:     p.botOpenID,
 			MessageID: messageID,
-			UserID: userID, UserName: userName,
-			Images:  []core.ImageAttachment{{MimeType: mimeType, Data: imgData}},
+			UserID:    userID, UserName: userName,
+			Images:   []core.ImageAttachment{{MimeType: mimeType, Data: imgData}},
 			ReplyCtx: rctx,
+			IsDM:     chatType == "p2p",
 		})
 
 	case "audio":
@@ -314,8 +320,10 @@ func (p *Platform) onMessage(event *larkim.P2MessageReceiveV1) error {
 		}
 		p.handler(p, &core.Message{
 			SessionKey: sessionKey, Platform: "feishu",
+			ChatID:    chatID,
+			BotID:     p.botOpenID,
 			MessageID: messageID,
-			UserID: userID, UserName: userName,
+			UserID:    userID, UserName: userName,
 			Audio: &core.AudioAttachment{
 				MimeType: "audio/opus",
 				Data:     audioData,
@@ -323,6 +331,7 @@ func (p *Platform) onMessage(event *larkim.P2MessageReceiveV1) error {
 				Duration: audioBody.Duration / 1000,
 			},
 			ReplyCtx: rctx,
+			IsDM:     chatType == "p2p",
 		})
 
 	case "post":
@@ -333,10 +342,13 @@ func (p *Platform) onMessage(event *larkim.P2MessageReceiveV1) error {
 		}
 		p.handler(p, &core.Message{
 			SessionKey: sessionKey, Platform: "feishu",
+			ChatID:    chatID,
+			BotID:     p.botOpenID,
 			MessageID: messageID,
-			UserID: userID, UserName: userName,
+			UserID:    userID, UserName: userName,
 			Content: text, Images: images,
 			ReplyCtx: rctx,
+			IsDM:     chatType == "p2p",
 		})
 
 	default:
@@ -1061,4 +1073,3 @@ func (p *Platform) extractPostParts(messageID string, post *postLang) ([]string,
 	}
 	return textParts, images
 }
-

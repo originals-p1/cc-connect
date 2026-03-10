@@ -24,7 +24,7 @@ func init() {
 const (
 	apiBaseProduction = "https://api.sgroup.qq.com"
 	apiBaseSandbox    = "https://sandbox.api.sgroup.qq.com"
-	tokenURL         = "https://bots.qq.com/app/getAppAccessToken"
+	tokenURL          = "https://bots.qq.com/app/getAppAccessToken"
 
 	// Default intent: GROUP_AND_C2C_EVENT (1 << 25)
 	defaultIntents = 1 << 25
@@ -38,14 +38,14 @@ const (
 
 // WebSocket opcodes for the QQ Bot gateway protocol.
 const (
-	opDispatch        = 0
-	opHeartbeat       = 1
-	opIdentify        = 2
-	opResume          = 6
-	opReconnect       = 7
-	opInvalidSession  = 9
-	opHello           = 10
-	opHeartbeatACK    = 11
+	opDispatch       = 0
+	opHeartbeat      = 1
+	opIdentify       = 2
+	opResume         = 6
+	opReconnect      = 7
+	opInvalidSession = 9
+	opHello          = 10
+	opHeartbeatACK   = 11
 )
 
 // Platform implements core.Platform for the official QQ Bot API v2.
@@ -652,12 +652,12 @@ func (p *Platform) handleDispatch(eventType string, data json.RawMessage) {
 
 func (p *Platform) handleGroupMessage(data json.RawMessage) {
 	var d struct {
-		ID           string       `json:"id"`
-		GroupOpenID  string       `json:"group_openid"`
-		Content      string       `json:"content"`
-		Timestamp    string       `json:"timestamp"`
-		Attachments  []attachment `json:"attachments"`
-		Author       struct {
+		ID          string       `json:"id"`
+		GroupOpenID string       `json:"group_openid"`
+		Content     string       `json:"content"`
+		Timestamp   string       `json:"timestamp"`
+		Attachments []attachment `json:"attachments"`
+		Author      struct {
 			MemberOpenID string `json:"member_openid"`
 		} `json:"author"`
 	}
@@ -714,12 +714,15 @@ func (p *Platform) handleGroupMessage(data json.RawMessage) {
 	msg := &core.Message{
 		SessionKey: sessionKey,
 		Platform:   "qqbot",
+		ChatID:     d.GroupOpenID,
+		BotID:      p.appID,
 		MessageID:  d.ID,
 		UserID:     d.Author.MemberOpenID,
 		UserName:   d.Author.MemberOpenID, // official API only provides openid, no nickname
 		Content:    content,
 		Images:     images,
 		ReplyCtx:   rctx,
+		IsDM:       false,
 	}
 
 	slog.Debug("qqbot: group message received", "group", d.GroupOpenID, "user", d.Author.MemberOpenID, "len", len(content), "images", len(images))
@@ -782,12 +785,15 @@ func (p *Platform) handleC2CMessage(data json.RawMessage) {
 	msg := &core.Message{
 		SessionKey: sessionKey,
 		Platform:   "qqbot",
+		ChatID:     d.Author.UserOpenID,
+		BotID:      p.appID,
 		MessageID:  d.ID,
 		UserID:     d.Author.UserOpenID,
 		UserName:   d.Author.UserOpenID,
 		Content:    content,
 		Images:     images,
 		ReplyCtx:   rctx,
+		IsDM:       true,
 	}
 
 	slog.Debug("qqbot: c2c message received", "user", d.Author.UserOpenID, "len", len(content), "images", len(images))

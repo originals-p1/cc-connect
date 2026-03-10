@@ -130,9 +130,12 @@ func (p *Platform) webhookHandler(w http.ResponseWriter, r *http.Request) {
 			slog.Debug("line: message received", "user", userID, "text_len", len(m.Text))
 			p.handler(p, &core.Message{
 				SessionKey: sessionKey, Platform: "line",
+				ChatID:    targetID,
+				BotID:     p.channelSecret,
 				MessageID: m.Id,
-				UserID: userID, UserName: userID,
+				UserID:    userID, UserName: userID,
 				Content: m.Text, ReplyCtx: rctx,
+				IsDM: targetType == "user",
 			})
 
 		case webhook.ImageMessageContent:
@@ -144,10 +147,13 @@ func (p *Platform) webhookHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			p.handler(p, &core.Message{
 				SessionKey: sessionKey, Platform: "line",
+				ChatID:    targetID,
+				BotID:     p.channelSecret,
 				MessageID: m.Id,
-				UserID: userID, UserName: userID,
-				Images:  []core.ImageAttachment{{MimeType: "image/jpeg", Data: imgData}},
+				UserID:    userID, UserName: userID,
+				Images:   []core.ImageAttachment{{MimeType: "image/jpeg", Data: imgData}},
 				ReplyCtx: rctx,
+				IsDM:     targetType == "user",
 			})
 
 		case webhook.AudioMessageContent:
@@ -163,8 +169,10 @@ func (p *Platform) webhookHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			p.handler(p, &core.Message{
 				SessionKey: sessionKey, Platform: "line",
+				ChatID:    targetID,
+				BotID:     p.channelSecret,
 				MessageID: m.Id,
-				UserID: userID, UserName: userID,
+				UserID:    userID, UserName: userID,
 				Audio: &core.AudioAttachment{
 					MimeType: "audio/m4a",
 					Data:     audioData,
@@ -172,6 +180,7 @@ func (p *Platform) webhookHandler(w http.ResponseWriter, r *http.Request) {
 					Duration: dur,
 				},
 				ReplyCtx: rctx,
+				IsDM:     targetType == "user",
 			})
 
 		default:

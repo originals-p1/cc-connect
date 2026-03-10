@@ -822,6 +822,44 @@ token = "xxxx"
 
 See [config.example.toml](config.example.toml) for a fully commented configuration template.
 
+For project-switching bot mode, use one shared workspace plus `[[bots]]` instead of fixed `[[projects]]` entries. In this mode, the bot keeps a fixed agent/platform setup and switches `work_dir` per DM user at runtime:
+
+```toml
+[workspace]
+root = "/path/to/workspace"
+require_git = true
+
+[[bots]]
+name = "codex-switcher"
+agent_type = "codex"
+default_project = "repo-a"
+max_cached_sessions = 3
+dm_only = true
+
+[bots.agent_options]
+model = "o3"
+mode = "full-auto"
+
+[[bots.platforms]]
+type = "telegram"
+
+[bots.platforms.options]
+token = "123456:ABC-xxx"
+```
+
+Runtime commands in bot mode:
+
+- `/project list`
+- `/project current`
+- `/project switch <name>`
+
+Notes:
+
+- `workspace.root` scans direct child directories only.
+- With `require_git = true`, only directories containing `.git` are exposed as switchable projects.
+- Bindings are scoped by platform + user + bot.
+- `dm_only = true` restricts switching and routed chat to direct messages.
+
 ## Extending
 
 ### Adding a New Platform

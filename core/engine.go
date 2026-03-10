@@ -177,9 +177,9 @@ type interactiveState struct {
 	replyCtx     any
 	mu           sync.Mutex
 	pending      *pendingPermission
-	approveAll bool // when true, auto-approve all permission requests for this session
-	quiet      bool // when true, suppress thinking and tool progress for this session
-	fromVoice  bool // true if current turn originated from voice transcription
+	approveAll   bool // when true, auto-approve all permission requests for this session
+	quiet        bool // when true, suppress thinking and tool progress for this session
+	fromVoice    bool // true if current turn originated from voice transcription
 }
 
 // pendingPermission represents a permission request waiting for user response.
@@ -631,6 +631,11 @@ func (e *Engine) handleMessage(p Platform, msg *Message) {
 	)
 
 	go e.processInteractiveMessage(p, msg, session)
+}
+
+// HandleIncomingMessage exposes the normal engine message entrypoint to outer routers.
+func (e *Engine) HandleIncomingMessage(p Platform, msg *Message) {
+	e.handleMessage(p, msg)
 }
 
 // ──────────────────────────────────────────────────────────────

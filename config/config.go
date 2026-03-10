@@ -16,21 +16,41 @@ var configMu sync.Mutex
 var ConfigPath string
 
 type Config struct {
-	DataDir     string          `toml:"data_dir"` // session store directory, default ~/.cc-connect
-	Projects    []ProjectConfig `toml:"projects"`
-	Commands    []CommandConfig `toml:"commands"`     // global custom slash commands
-	Aliases     []AliasConfig   `toml:"aliases"`     // global command aliases
-	BannedWords []string        `toml:"banned_words"` // messages containing any of these words are blocked
-	Log         LogConfig       `toml:"log"`
-	Language    string          `toml:"language"` // "en" or "zh", default is "en"
-	Speech      SpeechConfig    `toml:"speech"`
-	TTS         TTSConfig       `toml:"tts"`
-	Display       DisplayConfig       `toml:"display"`
-	StreamPreview StreamPreviewConfig `toml:"stream_preview"` // real-time streaming preview
-	RateLimit     RateLimitConfig     `toml:"rate_limit"`     // per-session rate limiting
-	Quiet            *bool               `toml:"quiet,omitempty"`              // global default for quiet mode; project-level overrides this
-	Cron             CronConfig          `toml:"cron"`
-	IdleTimeoutMins  *int                `toml:"idle_timeout_mins,omitempty"`  // max minutes between agent events; 0 = no timeout; default 120
+	DataDir         string              `toml:"data_dir"` // session store directory, default ~/.cc-connect
+	Projects        []ProjectConfig     `toml:"projects"`
+	Workspace       WorkspaceConfig     `toml:"workspace"`
+	Bots            []BotConfig         `toml:"bots"`
+	Commands        []CommandConfig     `toml:"commands"`     // global custom slash commands
+	Aliases         []AliasConfig       `toml:"aliases"`      // global command aliases
+	BannedWords     []string            `toml:"banned_words"` // messages containing any of these words are blocked
+	Log             LogConfig           `toml:"log"`
+	Language        string              `toml:"language"` // "en" or "zh", default is "en"
+	Speech          SpeechConfig        `toml:"speech"`
+	TTS             TTSConfig           `toml:"tts"`
+	Display         DisplayConfig       `toml:"display"`
+	StreamPreview   StreamPreviewConfig `toml:"stream_preview"`  // real-time streaming preview
+	RateLimit       RateLimitConfig     `toml:"rate_limit"`      // per-session rate limiting
+	Quiet           *bool               `toml:"quiet,omitempty"` // global default for quiet mode; project-level overrides this
+	Cron            CronConfig          `toml:"cron"`
+	IdleTimeoutMins *int                `toml:"idle_timeout_mins,omitempty"` // max minutes between agent events; 0 = no timeout; default 120
+}
+
+// WorkspaceConfig defines the root directory scanned for switchable projects in bot mode.
+type WorkspaceConfig struct {
+	Root       string `toml:"root"`
+	RequireGit *bool  `toml:"require_git,omitempty"`
+}
+
+// BotConfig defines one bot with fixed agent/platform config and runtime project switching.
+type BotConfig struct {
+	Name              string           `toml:"name"`
+	AgentType         string           `toml:"agent_type"`
+	AgentOptions      map[string]any   `toml:"agent_options"`
+	Providers         []ProviderConfig `toml:"providers"`
+	Platforms         []PlatformConfig `toml:"platforms"`
+	DefaultProject    string           `toml:"default_project,omitempty"`
+	MaxCachedSessions int              `toml:"max_cached_sessions,omitempty"`
+	DMOnly            *bool            `toml:"dm_only,omitempty"`
 }
 
 // CronConfig controls cron job behavior.
@@ -40,13 +60,13 @@ type CronConfig struct {
 
 // DisplayConfig controls how intermediate messages (thinking, tool output) are shown.
 type DisplayConfig struct {
-	ThinkingMaxLen  *int `toml:"thinking_max_len"`    // max chars for thinking messages; 0 = no truncation; default 300
-	ToolMaxLen      *int `toml:"tool_max_len"`        // max chars for tool use messages; 0 = no truncation; default 500
+	ThinkingMaxLen *int `toml:"thinking_max_len"` // max chars for thinking messages; 0 = no truncation; default 300
+	ToolMaxLen     *int `toml:"tool_max_len"`     // max chars for tool use messages; 0 = no truncation; default 500
 }
 
 // StreamPreviewConfig controls real-time streaming preview in IM.
 type StreamPreviewConfig struct {
-	Enabled           *bool    `toml:"enabled"`                     // default true
+	Enabled           *bool    `toml:"enabled"`                      // default true
 	DisabledPlatforms []string `toml:"disabled_platforms,omitempty"` // platforms where preview is disabled (e.g. ["feishu"])
 	IntervalMs        *int     `toml:"interval_ms"`                  // min ms between updates; default 1500
 	MinDeltaChars     *int     `toml:"min_delta_chars"`              // min new chars before update; default 30
@@ -82,12 +102,12 @@ type SpeechConfig struct {
 
 // TTSConfig configures text-to-speech output (mirrors SpeechConfig style).
 type TTSConfig struct {
-	Enabled     bool   `toml:"enabled"`
-	Provider    string `toml:"provider"`     // "qwen" | "openai"
-	Voice       string `toml:"voice"`        // default voice name
-	TTSMode     string `toml:"tts_mode"`     // "voice_only" (default) | "always"
-	MaxTextLen  int    `toml:"max_text_len"` // max rune count before skipping TTS; 0 = no limit
-	OpenAI      struct {
+	Enabled    bool   `toml:"enabled"`
+	Provider   string `toml:"provider"`     // "qwen" | "openai"
+	Voice      string `toml:"voice"`        // default voice name
+	TTSMode    string `toml:"tts_mode"`     // "voice_only" (default) | "always"
+	MaxTextLen int    `toml:"max_text_len"` // max rune count before skipping TTS; 0 = no limit
+	OpenAI     struct {
 		APIKey  string `toml:"api_key"`
 		BaseURL string `toml:"base_url"`
 		Model   string `toml:"model"`
@@ -138,9 +158,9 @@ type AliasConfig struct {
 type CommandConfig struct {
 	Name        string `toml:"name"`
 	Description string `toml:"description"`
-	Prompt      string `toml:"prompt"`      // prompt template (mutually exclusive with Exec)
-	Exec        string `toml:"exec"`        // shell command to execute (mutually exclusive with Prompt)
-	WorkDir     string `toml:"work_dir"`    // optional: working directory for exec command
+	Prompt      string `toml:"prompt"`   // prompt template (mutually exclusive with Exec)
+	Exec        string `toml:"exec"`     // shell command to execute (mutually exclusive with Prompt)
+	WorkDir     string `toml:"work_dir"` // optional: working directory for exec command
 }
 
 type LogConfig struct {
@@ -175,6 +195,13 @@ func Load(path string) (*Config, error) {
 }
 
 func (c *Config) validate() error {
+	if len(c.Bots) > 0 {
+		return c.validateBots()
+	}
+	return c.validateProjects()
+}
+
+func (c *Config) validateProjects() error {
 	if len(c.Projects) == 0 {
 		return fmt.Errorf("config: at least one [[projects]] entry is required")
 	}
@@ -190,6 +217,30 @@ func (c *Config) validate() error {
 			return fmt.Errorf("config: %s needs at least one [[projects.platforms]]", prefix)
 		}
 		for j, p := range proj.Platforms {
+			if p.Type == "" {
+				return fmt.Errorf("config: %s.platforms[%d].type is required", prefix, j)
+			}
+		}
+	}
+	return nil
+}
+
+func (c *Config) validateBots() error {
+	if c.Workspace.Root == "" {
+		return fmt.Errorf("config: workspace.root is required when [[bots]] is configured")
+	}
+	for i, bot := range c.Bots {
+		prefix := fmt.Sprintf("bots[%d]", i)
+		if bot.Name == "" {
+			return fmt.Errorf("config: %s.name is required", prefix)
+		}
+		if bot.AgentType == "" {
+			return fmt.Errorf("config: %s.agent_type is required", prefix)
+		}
+		if len(bot.Platforms) == 0 {
+			return fmt.Errorf("config: %s needs at least one [[bots.platforms]]", prefix)
+		}
+		for j, p := range bot.Platforms {
 			if p.Type == "" {
 				return fmt.Errorf("config: %s.platforms[%d].type is required", prefix, j)
 			}

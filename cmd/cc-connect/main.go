@@ -134,6 +134,14 @@ func main() {
 
 	setupLogger(cfg.Log.Level, logWriter)
 
+	if len(cfg.Bots) > 0 {
+		if err := runBotMode(cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "Error starting bot mode: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	engines := make([]*core.Engine, 0, len(cfg.Projects))
 
 	for _, proj := range cfg.Projects {
@@ -571,6 +579,211 @@ func sessionStorePath(dataDir, name, workDir string) string {
 	}
 
 	return filepath.Join(dataDir, "sessions", filename)
+}
+
+func runBotMode(cfg *config.Config) error {
+	cleanup, err := startBotMode(cfg)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	<-sigCh
+	return nil
+}
+
+func startBotMode(cfg *config.Config) (func(), error) {
+	requireGit := true
+	if cfg.Workspace.RequireGit != nil {
+		requireGit = *cfg.Workspace.RequireGit
+	}
+	catalog, err := core.ScanWorkspace(cfg.Workspace.Root, requireGit)
+	if err != nil {
+		return nil, err
+	}
+
+	var platforms []core.Platform
+	var runtimeManagers []*core.BotRuntimeManager
+
+	for _, bot := range cfg.Bots {
+		bot := bot
+		bindingPath := filepath.Join(cfg.DataDir, "bindings", bot.Name+".json")
+		bindings := core.NewBindingStore(bindingPath)
+		maxCache := bot.MaxCachedSessions
+		if maxCache <= 0 {
+			maxCache = 3
+		}
+		router := &core.BotRouter{
+			BotID:          bot.Name,
+			DefaultProject: bot.DefaultProject,
+			DMOnly:         bot.DMOnly == nil || *bot.DMOnly,
+			Catalog:        catalog,
+			Bindings:       bindings,
+		}
+		if bot.DefaultProject != "" {
+			if _, ok := catalog.Projects[bot.DefaultProject]; !ok {
+				return nil, fmt.Errorf("bot %s default_project %q not found in workspace", bot.Name, bot.DefaultProject)
+			}
+		}
+
+		runtimeMgr := core.NewBotRuntimeManager(catalog, maxCache, func(botID string, proj core.ProjectInfo) (*core.ProjectRuntime, error) {
+			engine, err := newBotProjectEngine(cfg, bot, proj)
+			if err != nil {
+				return nil, err
+			}
+			return &core.ProjectRuntime{
+				BotID:   botID,
+				Project: proj,
+				Engine:  engine,
+				CloseFunc: func() error {
+					return engine.Stop()
+				},
+			}, nil
+		})
+		router.Runtimes = runtimeMgr
+		runtimeManagers = append(runtimeManagers, runtimeMgr)
+
+		for _, pc := range bot.Platforms {
+			p, err := core.CreatePlatform(pc.Type, pc.Options)
+			if err != nil {
+				return nil, fmt.Errorf("create platform for bot %s: %w", bot.Name, err)
+			}
+			if err := p.Start(router.HandleMessage); err != nil {
+				return nil, fmt.Errorf("start platform %s for bot %s: %w", p.Name(), bot.Name, err)
+			}
+			platforms = append(platforms, p)
+		}
+	}
+
+	slog.Info("cc-connect is running in bot mode", "bots", len(cfg.Bots), "projects", len(catalog.Projects))
+	return func() {
+		for _, p := range platforms {
+			if err := p.Stop(); err != nil {
+				slog.Error("shutdown platform error", "platform", p.Name(), "error", err)
+			}
+		}
+		for _, rm := range runtimeManagers {
+			if err := rm.StopAll(); err != nil {
+				slog.Error("shutdown runtime manager error", "error", err)
+			}
+		}
+	}, nil
+}
+
+func newBotProjectEngine(cfg *config.Config, bot config.BotConfig, proj core.ProjectInfo) (*core.Engine, error) {
+	agentOpts := make(map[string]any, len(bot.AgentOptions)+1)
+	for k, v := range bot.AgentOptions {
+		agentOpts[k] = v
+	}
+	agentOpts["work_dir"] = proj.Path
+
+	agent, err := core.CreateAgent(bot.AgentType, agentOpts)
+	if err != nil {
+		return nil, err
+	}
+	if ps, ok := agent.(core.ProviderSwitcher); ok && len(bot.Providers) > 0 {
+		providers := make([]core.ProviderConfig, len(bot.Providers))
+		for i, p := range bot.Providers {
+			providers[i] = core.ProviderConfig{
+				Name:     p.Name,
+				APIKey:   p.APIKey,
+				BaseURL:  p.BaseURL,
+				Model:    p.Model,
+				Thinking: p.Thinking,
+				Env:      p.Env,
+			}
+		}
+		ps.SetProviders(providers)
+		if active, _ := bot.AgentOptions["provider"].(string); active != "" {
+			ps.SetActiveProvider(active)
+		}
+	}
+
+	engine := core.NewEngine(bot.Name+":"+proj.Name, agent, nil, sessionStorePath(cfg.DataDir, bot.Name+"_"+proj.Name, proj.Path), parseLanguage(cfg.Language))
+
+	for _, c := range cfg.Commands {
+		engine.AddCommand(c.Name, c.Description, c.Prompt, c.Exec, c.WorkDir, "config")
+	}
+	for _, a := range cfg.Aliases {
+		engine.AddAlias(a.Name, a.Command)
+	}
+	if len(cfg.BannedWords) > 0 {
+		engine.SetBannedWords(cfg.BannedWords)
+	}
+	if cfg.Quiet != nil {
+		engine.SetDefaultQuiet(*cfg.Quiet)
+	}
+
+	dcfg := core.DisplayCfg{ThinkingMaxLen: 300, ToolMaxLen: 500}
+	if cfg.Display.ThinkingMaxLen != nil {
+		dcfg.ThinkingMaxLen = *cfg.Display.ThinkingMaxLen
+	}
+	if cfg.Display.ToolMaxLen != nil {
+		dcfg.ToolMaxLen = *cfg.Display.ToolMaxLen
+	}
+	engine.SetDisplayConfig(dcfg)
+
+	spcfg := core.DefaultStreamPreviewCfg()
+	if cfg.StreamPreview.Enabled != nil {
+		spcfg.Enabled = *cfg.StreamPreview.Enabled
+	}
+	if cfg.StreamPreview.IntervalMs != nil {
+		spcfg.IntervalMs = *cfg.StreamPreview.IntervalMs
+	}
+	if cfg.StreamPreview.MinDeltaChars != nil {
+		spcfg.MinDeltaChars = *cfg.StreamPreview.MinDeltaChars
+	}
+	if cfg.StreamPreview.MaxChars != nil {
+		spcfg.MaxChars = *cfg.StreamPreview.MaxChars
+	}
+	if cfg.StreamPreview.DisabledPlatforms != nil {
+		spcfg.DisabledPlatforms = cfg.StreamPreview.DisabledPlatforms
+	}
+	engine.SetStreamPreviewCfg(spcfg)
+
+	maxMsg := 20
+	windowSecs := 60
+	if cfg.RateLimit.MaxMessages != nil {
+		maxMsg = *cfg.RateLimit.MaxMessages
+	}
+	if cfg.RateLimit.WindowSecs != nil {
+		windowSecs = *cfg.RateLimit.WindowSecs
+	}
+	if maxMsg > 0 {
+		engine.SetRateLimitCfg(core.RateLimitCfg{
+			MaxMessages: maxMsg,
+			Window:      time.Duration(windowSecs) * time.Second,
+		})
+	}
+	if cfg.IdleTimeoutMins != nil {
+		mins := *cfg.IdleTimeoutMins
+		if mins <= 0 {
+			engine.SetEventIdleTimeout(0)
+		} else {
+			engine.SetEventIdleTimeout(time.Duration(mins) * time.Minute)
+		}
+	}
+
+	return engine, nil
+}
+
+func parseLanguage(lang string) core.Language {
+	switch lang {
+	case "zh", "chinese":
+		return core.LangChinese
+	case "zh-TW", "zh_TW", "zhtw":
+		return core.LangTraditionalChinese
+	case "ja", "japanese":
+		return core.LangJapanese
+	case "es", "spanish":
+		return core.LangSpanish
+	case "en", "english":
+		return core.LangEnglish
+	default:
+		return core.LangAuto
+	}
 }
 
 // resolveConfigPath determines which config file to use.

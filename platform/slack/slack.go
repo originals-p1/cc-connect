@@ -165,10 +165,13 @@ func (p *Platform) handleEvent(evt socketmode.Event) {
 
 				msg := &core.Message{
 					SessionKey: sessionKey, Platform: "slack",
+					ChatID: ev.Channel,
+					BotID:  p.appToken,
 					UserID: ev.User, UserName: ev.User,
 					Content: ev.Text, Images: images, Audio: audio,
 					MessageID: ts,
-					ReplyCtx: replyContext{channel: ev.Channel, timestamp: ts},
+					ReplyCtx:  replyContext{channel: ev.Channel, timestamp: ts},
+					IsDM:      ev.ChannelType == "im",
 				}
 				p.handler(p, msg)
 			}

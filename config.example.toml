@@ -293,6 +293,44 @@ level = "info" # debug, info, warn, error
 #
 
 # =============================================================================
+# Bot Switching Mode / Bot 切换模式
+# =============================================================================
+# Alternative to fixed [[projects]] mode:
+# 一个 bot 保持固定 agent/platform 配置，在运行时按私聊用户切换项目。
+#
+# Rules / 规则:
+# - `workspace.root` is scanned only one level deep / 只扫描 workspace.root 下一层目录
+# - `require_git = true` keeps only directories with `.git` / 只保留带 `.git` 的目录
+# - project binding is keyed by platform + user + bot / 绑定按 platform + user + bot 维度保存
+# - when `dm_only = true`, `/project ...` and normal chat routing only work in DM / 私聊可用
+
+# [workspace]
+# root = "/path/to/workspace"
+# require_git = true
+
+# [[bots]]
+# name = "codex-switcher"
+# agent_type = "codex"
+# default_project = "repo-a"   # optional: auto-select on first DM / 可选：首次私聊自动选中
+# max_cached_sessions = 3
+# dm_only = true
+#
+# [bots.agent_options]
+# model = "o3"
+# mode = "full-auto"
+#
+# [[bots.platforms]]
+# type = "telegram"
+#
+# [bots.platforms.options]
+# token = "123456:ABC-xxx"
+#
+# Runtime commands / 运行时命令:
+#   /project list
+#   /project current
+#   /project switch <name>
+
+# =============================================================================
 # Project 1 / 项目 1
 # =============================================================================
 

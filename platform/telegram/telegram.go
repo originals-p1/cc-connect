@@ -160,11 +160,14 @@ func (p *Platform) Start(handler core.MessageHandler) error {
 					}
 					coreMsg := &core.Message{
 						SessionKey: sessionKey, Platform: "telegram",
+						ChatID: strconv.FormatInt(msg.Chat.ID, 10),
+						BotID:  strconv.FormatInt(p.bot.Self.ID, 10),
 						UserID: userID, UserName: userName,
 						Content:   caption,
 						MessageID: strconv.Itoa(msg.MessageID),
 						Images:    []core.ImageAttachment{{MimeType: "image/jpeg", Data: imgData}},
 						ReplyCtx:  rctx,
+						IsDM:      msg.Chat.Type == "private",
 					}
 					p.handler(p, coreMsg)
 					continue
@@ -180,6 +183,8 @@ func (p *Platform) Start(handler core.MessageHandler) error {
 					}
 					coreMsg := &core.Message{
 						SessionKey: sessionKey, Platform: "telegram",
+						ChatID: strconv.FormatInt(msg.Chat.ID, 10),
+						BotID:  strconv.FormatInt(p.bot.Self.ID, 10),
 						UserID: userID, UserName: userName,
 						MessageID: strconv.Itoa(msg.MessageID),
 						Audio: &core.AudioAttachment{
@@ -189,6 +194,7 @@ func (p *Platform) Start(handler core.MessageHandler) error {
 							Duration: msg.Voice.Duration,
 						},
 						ReplyCtx: rctx,
+						IsDM:     msg.Chat.Type == "private",
 					}
 					p.handler(p, coreMsg)
 					continue
@@ -211,6 +217,8 @@ func (p *Platform) Start(handler core.MessageHandler) error {
 					}
 					coreMsg := &core.Message{
 						SessionKey: sessionKey, Platform: "telegram",
+						ChatID: strconv.FormatInt(msg.Chat.ID, 10),
+						BotID:  strconv.FormatInt(p.bot.Self.ID, 10),
 						UserID: userID, UserName: userName,
 						MessageID: strconv.Itoa(msg.MessageID),
 						Audio: &core.AudioAttachment{
@@ -220,6 +228,7 @@ func (p *Platform) Start(handler core.MessageHandler) error {
 							Duration: msg.Audio.Duration,
 						},
 						ReplyCtx: rctx,
+						IsDM:     msg.Chat.Type == "private",
 					}
 					p.handler(p, coreMsg)
 					continue
@@ -237,10 +246,13 @@ func (p *Platform) Start(handler core.MessageHandler) error {
 
 				coreMsg := &core.Message{
 					SessionKey: sessionKey, Platform: "telegram",
+					ChatID: strconv.FormatInt(msg.Chat.ID, 10),
+					BotID:  strconv.FormatInt(p.bot.Self.ID, 10),
 					UserID: userID, UserName: userName,
 					Content:   text,
 					MessageID: strconv.Itoa(msg.MessageID),
 					ReplyCtx:  rctx,
+					IsDM:      msg.Chat.Type == "private",
 				}
 
 				slog.Debug("telegram: message received", "user", userName, "chat", msg.Chat.ID)

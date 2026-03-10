@@ -297,9 +297,12 @@ func (p *Platform) handleMessage(w http.ResponseWriter, r *http.Request, msgSig,
 		slog.Debug("wecom: message received", "user", msg.FromUserName, "text_len", len(msg.Content))
 		go p.handler(p, &core.Message{
 			SessionKey: sessionKey, Platform: "wecom",
+			ChatID:    msg.FromUserName,
+			BotID:     p.agentID,
 			MessageID: strconv.FormatInt(msg.MsgId, 10),
-			UserID: msg.FromUserName, UserName: msg.FromUserName,
+			UserID:    msg.FromUserName, UserName: msg.FromUserName,
 			Content: msg.Content, ReplyCtx: rctx,
+			IsDM: true,
 		})
 
 	case "image":
@@ -312,10 +315,13 @@ func (p *Platform) handleMessage(w http.ResponseWriter, r *http.Request, msgSig,
 			}
 			p.handler(p, &core.Message{
 				SessionKey: sessionKey, Platform: "wecom",
+				ChatID:    msg.FromUserName,
+				BotID:     p.agentID,
 				MessageID: strconv.FormatInt(msg.MsgId, 10),
-				UserID: msg.FromUserName, UserName: msg.FromUserName,
-				Images:  []core.ImageAttachment{{MimeType: "image/jpeg", Data: imgData}},
+				UserID:    msg.FromUserName, UserName: msg.FromUserName,
+				Images:   []core.ImageAttachment{{MimeType: "image/jpeg", Data: imgData}},
 				ReplyCtx: rctx,
+				IsDM:     true,
 			})
 		}()
 
@@ -333,10 +339,13 @@ func (p *Platform) handleMessage(w http.ResponseWriter, r *http.Request, msgSig,
 			}
 			p.handler(p, &core.Message{
 				SessionKey: sessionKey, Platform: "wecom",
+				ChatID:    msg.FromUserName,
+				BotID:     p.agentID,
 				MessageID: strconv.FormatInt(msg.MsgId, 10),
-				UserID: msg.FromUserName, UserName: msg.FromUserName,
+				UserID:    msg.FromUserName, UserName: msg.FromUserName,
 				Audio:    &core.AudioAttachment{MimeType: "audio/" + format, Data: audioData, Format: format},
 				ReplyCtx: rctx,
+				IsDM:     true,
 			})
 		}()
 
