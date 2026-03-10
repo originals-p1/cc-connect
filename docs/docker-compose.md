@@ -18,8 +18,6 @@ git clone https://github.com/chenhg5/cc-connect.git
 cd cc-connect
 mkdir -p docker-data
 cp config.example.toml docker-data/config.toml
-export PUID=$(id -u)
-export PGID=$(id -g)
 ```
 
 If your agent `work_dir` points to local repositories, mount them into the container and use the container path in `config.toml`, for example `/workspace/my-project`.
@@ -30,8 +28,6 @@ The default `docker-compose.yml` already mounts:
 - `${HOME}/workspace` -> `/workspace`
 
 Adjust those paths to match your machine.
-
-The container runs as `${PUID}:${PGID}` by default so files created in `docker-data` and mounted workspaces stay owned by your host user instead of `root`.
 
 ## 2. Configure `docker-data/config.toml`
 
@@ -81,13 +77,6 @@ Then change `docker-compose.yml` to build from that derived image instead of the
 docker compose up -d --build
 ```
 
-If you prefer, put `PUID` and `PGID` into a local `.env` file instead of exporting them in your shell:
-
-```dotenv
-PUID=1000
-PGID=1000
-```
-
 ## 5. Logs
 
 ```bash
@@ -105,7 +94,6 @@ docker compose up -d --build
 
 - For LINE / WeCom and other webhook-based platforms, expose the configured ports in `docker-compose.yml`.
 - If you use bot mode, make sure the workspace root in `config.toml` matches a mounted container path such as `/workspace`.
-- The compose service sets `HOME=/data/.home` so Codex and other CLIs keep their writable state inside the mounted data directory.
 - If you need proxy access, set `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` in your shell or edit `docker-compose.yml`.
 - The provided `docker-compose.yml` also forwards proxy variables into the image build, so `docker compose up -d --build` works behind a proxy without extra edits.
 - The provided `docker-compose.yml` uses `build.network: host`, which is useful on Linux when your proxy listens on `127.0.0.1`.

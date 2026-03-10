@@ -143,7 +143,7 @@ cp config.example.toml docker-data/config.toml
 docker compose up -d --build
 ```
 
-The default image includes `cc-connect`, `ffmpeg`, and Codex CLI. See [docs/docker-compose.md](docs/docker-compose.md) for volume layout, host UID/GID mapping, config paths, webhook ports, and derived-image examples for other agent CLIs.
+The default image includes `cc-connect`, `ffmpeg`, and Codex CLI. See [docs/docker-compose.md](docs/docker-compose.md) for volume layout, config paths, webhook ports, and derived-image examples for other agent CLIs.
 
 ### Configure
 

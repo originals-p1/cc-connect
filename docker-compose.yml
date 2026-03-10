@@ -14,14 +14,12 @@ services:
         no_proxy: ${no_proxy:-}
     container_name: cc-connect
     restart: unless-stopped
-    user: "${PUID:-1000}:${PGID:-1000}"
     command: ["--config", "/data/config.toml"]
     working_dir: /data
     volumes:
       - ./docker-data:/data
       - ${HOME}/workspace:/workspace
     environment:
-      HOME: /data/.home
       TZ: ${TZ:-UTC}
       HTTP_PROXY: ${HTTP_PROXY:-}
       HTTPS_PROXY: ${HTTPS_PROXY:-}
