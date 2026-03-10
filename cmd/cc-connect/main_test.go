@@ -29,8 +29,9 @@ func (s *smokeAgentSession) Alive() bool                                        
 func (s *smokeAgentSession) Close() error                                          { return nil }
 
 type smokePlatform struct {
-	handler core.MessageHandler
-	sent    []string
+	handler            core.MessageHandler
+	sent               []string
+	registeredCommands []core.BotCommandInfo
 }
 
 func (p *smokePlatform) Name() string { return "smoke-platform" }
@@ -44,6 +45,10 @@ func (p *smokePlatform) Reply(_ context.Context, _ any, content string) error {
 }
 func (p *smokePlatform) Send(context.Context, any, string) error { return nil }
 func (p *smokePlatform) Stop() error                             { return nil }
+func (p *smokePlatform) RegisterCommands(commands []core.BotCommandInfo) error {
+	p.registeredCommands = append([]core.BotCommandInfo(nil), commands...)
+	return nil
+}
 
 var lastSmokePlatform *smokePlatform
 
@@ -97,5 +102,40 @@ func TestStartBotModeSmoke(t *testing.T) {
 
 	if len(lastSmokePlatform.sent) == 0 {
 		t.Fatal("expected smoke platform to receive a reply")
+	}
+}
+
+func TestStartBotModeRegistersPlatformCommands(t *testing.T) {
+	workspace := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(workspace, "repo-a", ".git"), 0o755); err != nil {
+		t.Fatalf("mkdir repo: %v", err)
+	}
+
+	cfg := &config.Config{
+		DataDir: filepath.Join(t.TempDir(), "data"),
+		Workspace: config.WorkspaceConfig{
+			Root: workspace,
+		},
+		Bots: []config.BotConfig{{
+			Name:      "smoke-bot",
+			AgentType: "smoke-agent",
+			Platforms: []config.PlatformConfig{{
+				Type:    "smoke-platform",
+				Options: map[string]any{},
+			}},
+		}},
+	}
+
+	cleanup, err := startBotMode(cfg)
+	if err != nil {
+		t.Fatalf("startBotMode() error = %v", err)
+	}
+	defer cleanup()
+
+	if lastSmokePlatform == nil {
+		t.Fatal("expected smoke platform to be created")
+	}
+	if len(lastSmokePlatform.registeredCommands) == 0 {
+		t.Fatal("expected bot mode to register platform commands")
 	}
 }

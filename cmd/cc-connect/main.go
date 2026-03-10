@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -653,6 +654,9 @@ func startBotMode(cfg *config.Config) (func(), error) {
 			if err := p.Start(router.HandleMessage); err != nil {
 				return nil, fmt.Errorf("start platform %s for bot %s: %w", p.Name(), bot.Name, err)
 			}
+			if err := registerBotModeCommands(p, router, runtimeMgr); err != nil {
+				slog.Error("platform command registration failed", "bot", bot.Name, "platform", p.Name(), "error", err)
+			}
 			platforms = append(platforms, p)
 		}
 	}
@@ -670,6 +674,66 @@ func startBotMode(cfg *config.Config) (func(), error) {
 			}
 		}
 	}, nil
+}
+
+func registerBotModeCommands(p core.Platform, router *core.BotRouter, runtimeMgr *core.BotRuntimeManager) error {
+	registrar, ok := p.(core.CommandRegistrar)
+	if !ok {
+		return nil
+	}
+
+	commands := []core.BotCommandInfo{{
+		Command:     "project",
+		Description: "List or switch projects",
+	}}
+
+	if runtimeMgr != nil {
+		if projectName := pickBotModeCommandProject(router); projectName != "" {
+			rt, err := runtimeMgr.GetOrCreate(router.BotID, projectName)
+			if err != nil {
+				return fmt.Errorf("load project runtime for commands: %w", err)
+			}
+			if rt != nil && rt.Engine != nil {
+				commands = appendUniqueCommands(commands, rt.Engine.GetAllCommands())
+			}
+		}
+	}
+
+	return registrar.RegisterCommands(commands)
+}
+
+func pickBotModeCommandProject(router *core.BotRouter) string {
+	if router == nil || router.Catalog == nil || len(router.Catalog.Projects) == 0 {
+		return ""
+	}
+	if router.DefaultProject != "" {
+		if _, ok := router.Catalog.Projects[router.DefaultProject]; ok {
+			return router.DefaultProject
+		}
+	}
+
+	names := make([]string, 0, len(router.Catalog.Projects))
+	for name := range router.Catalog.Projects {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names[0]
+}
+
+func appendUniqueCommands(base, extra []core.BotCommandInfo) []core.BotCommandInfo {
+	seen := make(map[string]bool, len(base))
+	for _, cmd := range base {
+		seen[strings.ToLower(cmd.Command)] = true
+	}
+	for _, cmd := range extra {
+		key := strings.ToLower(cmd.Command)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		base = append(base, cmd)
+	}
+	return base
 }
 
 func newBotProjectEngine(cfg *config.Config, bot config.BotConfig, proj core.ProjectInfo) (*core.Engine, error) {
