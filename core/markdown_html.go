@@ -3,12 +3,13 @@ package core
 import (
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 // MarkdownToTelegramHTML converts common Markdown to Telegram-compatible HTML.
 // Telegram supports: <b>, <i>, <s>, <code>, <pre>, <a href="">, <blockquote>.
-// This is more reliable than Telegram's native Markdown parser which frequently
-// fails on content with underscores, asterisks in code, etc.
+// Markdown tables are converted to <pre> blocks so they display correctly
+// (Telegram does not support HTML or Markdown table syntax).
 func MarkdownToTelegramHTML(md string) string {
 	var b strings.Builder
 	b.Grow(len(md) + len(md)/4)
@@ -18,7 +19,8 @@ func MarkdownToTelegramHTML(md string) string {
 	codeLang := ""
 	var codeLines []string
 
-	for i, line := range lines {
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
 		trimmed := strings.TrimSpace(line)
 
 		if strings.HasPrefix(trimmed, "```") {
@@ -44,6 +46,29 @@ func MarkdownToTelegramHTML(md string) string {
 
 		if inCodeBlock {
 			codeLines = append(codeLines, line)
+			continue
+		}
+
+		// Markdown table: consecutive lines starting with | and containing |
+		if isTableLine(trimmed) {
+			tableLines := []string{line}
+			j := i + 1
+			for j < len(lines) {
+				t := strings.TrimSpace(lines[j])
+				if !isTableLine(t) {
+					break
+				}
+				tableLines = append(tableLines, lines[j])
+				j++
+			}
+			formatted := formatTableForTelegram(tableLines)
+			b.WriteString("<pre>")
+			b.WriteString(escapeHTML(formatted))
+			b.WriteString("</pre>")
+			if j < len(lines) {
+				b.WriteByte('\n')
+			}
+			i = j - 1
 			continue
 		}
 
@@ -80,6 +105,123 @@ func MarkdownToTelegramHTML(md string) string {
 	}
 
 	return b.String()
+}
+
+// isTableLine returns true if the line looks like a Markdown table row (| cell | cell |).
+func isTableLine(trimmed string) bool {
+	if trimmed == "" {
+		return false
+	}
+	if !strings.HasPrefix(trimmed, "|") {
+		return false
+	}
+	return strings.Contains(trimmed[1:], "|")
+}
+
+// formatTableForTelegram converts Markdown table lines to a plain-text table
+// with aligned columns, suitable for display inside <pre> in Telegram.
+func formatTableForTelegram(tableLines []string) string {
+	if len(tableLines) == 0 {
+		return ""
+	}
+	var rows [][]string
+	for _, line := range tableLines {
+		cells := parseTableRow(line)
+		if len(cells) == 0 {
+			continue
+		}
+		rows = append(rows, cells)
+	}
+	if len(rows) == 0 {
+		return ""
+	}
+	// Check if second row is separator (|---||---|)
+	sepIdx := -1
+	if len(rows) >= 2 {
+		allSep := true
+		for _, c := range rows[1] {
+			s := strings.TrimSpace(strings.ReplaceAll(c, " ", ""))
+			if s != "" && s != "-" && !strings.HasPrefix(s, ":") && !strings.HasSuffix(s, ":") {
+				// allow :-: or :--- etc
+				onlyDash := true
+				for _, r := range s {
+					if r != '-' && r != ':' {
+						onlyDash = false
+						break
+					}
+				}
+				if !onlyDash {
+					allSep = false
+					break
+				}
+			}
+		}
+		if allSep && len(rows[1]) == len(rows[0]) {
+			sepIdx = 1
+		}
+	}
+	// Column count from first row
+	nc := len(rows[0])
+	widths := make([]int, nc)
+	for r, row := range rows {
+		if r == sepIdx {
+			continue
+		}
+		for c, cell := range row {
+			if c < nc {
+				w := utf8.RuneCountInString(strings.TrimSpace(cell))
+				if w > widths[c] {
+					widths[c] = w
+				}
+			}
+		}
+	}
+	// Build output
+	var out strings.Builder
+	for r, row := range rows {
+		if r == sepIdx {
+			// Separator row: output a line of dashes
+			for c := 0; c < nc; c++ {
+				if c > 0 {
+					out.WriteString(" ")
+				}
+				for i := 0; i < widths[c]; i++ {
+					out.WriteByte('-')
+				}
+			}
+			out.WriteByte('\n')
+			continue
+		}
+		for c := 0; c < nc && c < len(row); c++ {
+			cell := strings.TrimSpace(row[c])
+			if c > 0 {
+				out.WriteString(" ")
+			}
+			out.WriteString(cell)
+			for i := utf8.RuneCountInString(cell); i < widths[c]; i++ {
+				out.WriteByte(' ')
+			}
+		}
+		out.WriteByte('\n')
+	}
+	return strings.TrimRight(out.String(), "\n")
+}
+
+// parseTableRow splits a table row by | and returns trimmed cells (no leading/trailing empty).
+func parseTableRow(line string) []string {
+	line = strings.TrimSpace(line)
+	if strings.HasPrefix(line, "|") {
+		line = line[1:]
+	}
+	if strings.HasSuffix(line, "|") {
+		line = line[:len(line)-1]
+	}
+	parts := strings.Split(line, "|")
+	cells := make([]string, 0, len(parts))
+	for _, p := range parts {
+		cells = append(cells, strings.TrimSpace(p))
+	}
+	return cells
 }
 
 var (

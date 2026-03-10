@@ -204,6 +204,27 @@ func validateHTMLNesting(html string) error {
 	return nil
 }
 
+func TestMarkdownToTelegramHTML_Table(t *testing.T) {
+	md := `| 列1 | 列2 |
+|-----|-----|
+| A   | B   |
+| C   | D   |`
+	out := MarkdownToTelegramHTML(md)
+	if !strings.Contains(out, "<pre>") {
+		t.Errorf("expected <pre> for table, got %q", out)
+	}
+	if !strings.Contains(out, "列1") || !strings.Contains(out, "列2") {
+		t.Errorf("expected table header in pre, got %q", out)
+	}
+	if !strings.Contains(out, "A") || !strings.Contains(out, "B") {
+		t.Errorf("expected table cells in pre, got %q", out)
+	}
+	// No raw pipe characters in output (they're replaced by aligned spaces)
+	if strings.Contains(out, "|") {
+		t.Errorf("table should not contain raw | in pre body: %q", out)
+	}
+}
+
 func TestSplitMessageCodeFenceAware_Short(t *testing.T) {
 	chunks := SplitMessageCodeFenceAware("hello", 100)
 	if len(chunks) != 1 || chunks[0] != "hello" {
