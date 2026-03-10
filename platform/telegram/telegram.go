@@ -287,13 +287,6 @@ func (p *Platform) handleCallbackQuery(cb *tgbotapi.CallbackQuery) {
 	if userName == "" {
 		userName = strings.TrimSpace(cb.From.FirstName + " " + cb.From.LastName)
 	}
-	var sessionKey string
-	if p.shareSessionInChannel {
-		sessionKey = fmt.Sprintf("telegram:%d", chatID)
-	} else {
-		sessionKey = fmt.Sprintf("telegram:%d:%d", chatID, cb.From.ID)
-	}
-	rctx := replyContext{chatID: chatID, messageID: msgID}
 
 	// Command callbacks (cmd:/lang en, cmd:/mode yolo, etc.)
 	if strings.HasPrefix(data, "cmd:") {
@@ -309,15 +302,7 @@ func (p *Platform) handleCallbackQuery(cb *tgbotapi.CallbackQuery) {
 		edit.ReplyMarkup = &emptyMarkup
 		p.bot.Send(edit)
 
-		p.handler(p, &core.Message{
-			SessionKey: sessionKey,
-			Platform:   "telegram",
-			UserID:     userID,
-			UserName:   userName,
-			Content:    command,
-			MessageID:  strconv.Itoa(msgID),
-			ReplyCtx:   rctx,
-		})
+		p.handler(p, p.callbackCoreMessage(cb, command))
 		return
 	}
 
@@ -354,15 +339,35 @@ func (p *Platform) handleCallbackQuery(cb *tgbotapi.CallbackQuery) {
 	edit.ReplyMarkup = &emptyMarkup
 	p.bot.Send(edit)
 
-	p.handler(p, &core.Message{
+	p.handler(p, p.callbackCoreMessage(cb, responseText))
+}
+
+func (p *Platform) callbackCoreMessage(cb *tgbotapi.CallbackQuery, content string) *core.Message {
+	chatID := cb.Message.Chat.ID
+	msgID := cb.Message.MessageID
+	userID := strconv.FormatInt(cb.From.ID, 10)
+	userName := cb.From.UserName
+	if userName == "" {
+		userName = strings.TrimSpace(cb.From.FirstName + " " + cb.From.LastName)
+	}
+
+	var sessionKey string
+	if p.shareSessionInChannel {
+		sessionKey = fmt.Sprintf("telegram:%d", chatID)
+	} else {
+		sessionKey = fmt.Sprintf("telegram:%d:%d", chatID, cb.From.ID)
+	}
+
+	return &core.Message{
 		SessionKey: sessionKey,
 		Platform:   "telegram",
 		UserID:     userID,
 		UserName:   userName,
-		Content:    responseText,
+		Content:    content,
 		MessageID:  strconv.Itoa(msgID),
-		ReplyCtx:   rctx,
-	})
+		ReplyCtx:   replyContext{chatID: chatID, messageID: msgID},
+		IsDM:       cb.Message.Chat != nil && cb.Message.Chat.Type == "private",
+	}
 }
 
 // isDirectedAtBot checks whether a group message is directed at this bot:
