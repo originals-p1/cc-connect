@@ -7,9 +7,8 @@ The stock image includes:
 - `cc-connect`
 - `ffmpeg`
 - `node` / `npm`
-- `codex` (`@openai/codex`)
 
-The stock image does **not** preinstall every supported agent CLI. Codex works out of the box. If you use Gemini CLI, iFlow, OpenCode, Cursor Agent, Qoder CLI, or Claude Code inside the container, install the required CLI in a derived image or extend the container at runtime.
+The stock image does **not** preinstall every supported agent CLI. If you use Codex, Gemini CLI, iFlow, OpenCode, Cursor Agent, Qoder CLI, or Claude Code inside the container, install the required CLI in a derived image or extend the container at runtime.
 
 ## 1. Prepare directories
 
@@ -57,16 +56,14 @@ type = "telegram"
 token = "123456:ABC-xxx"
 ```
 
-## 3. Optional: install more agent CLIs in a derived image
+## 3. Optional: install agent CLIs in a derived image
 
-Codex is already included. Extend the image only when you need other agent CLIs.
-
-Example for Gemini CLI:
+Example for Codex:
 
 ```dockerfile
 FROM cc-connect:local
 
-RUN npm install -g @google/gemini-cli
+RUN npm install -g @openai/codex
 ```
 
 Then change `docker-compose.yml` to build from that derived image instead of the stock Dockerfile.
@@ -95,5 +92,3 @@ docker compose up -d --build
 - For LINE / WeCom and other webhook-based platforms, expose the configured ports in `docker-compose.yml`.
 - If you use bot mode, make sure the workspace root in `config.toml` matches a mounted container path such as `/workspace`.
 - If you need proxy access, set `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` in your shell or edit `docker-compose.yml`.
-- The provided `docker-compose.yml` also forwards proxy variables into the image build, so `docker compose up -d --build` works behind a proxy without extra edits.
-- The provided `docker-compose.yml` uses `build.network: host`, which is useful on Linux when your proxy listens on `127.0.0.1`.
