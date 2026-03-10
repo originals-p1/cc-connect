@@ -26,9 +26,9 @@ If your agent `work_dir` points to local repositories, mount them into the conta
 The default `docker-compose.yml` already mounts:
 
 - `./docker-data` -> `/data`
-- `/home/tz/workspace` -> `/workspace`
+- `${HOME}/workspace` -> `/workspace`
 
-Adjust those paths to match your machine. Use an absolute host path instead of `${HOME}` because some Docker installations rewrite `HOME` during compose interpolation.
+Adjust those paths to match your machine.
 
 The container runs as `${PUID}:${PGID}` by default so files created in `docker-data` and mounted workspaces stay owned by your host user instead of `root`.
 
@@ -89,14 +89,6 @@ PUID=1000
 PGID=1000
 ```
 
-If you need a host-local proxy such as `127.0.0.1:7890`, set runtime proxy variables like this:
-
-```dotenv
-DOCKER_HTTP_PROXY=http://host.docker.internal:7890
-DOCKER_HTTPS_PROXY=http://host.docker.internal:7890
-DOCKER_ALL_PROXY=http://host.docker.internal:7890
-```
-
 ## 5. Logs
 
 ```bash
@@ -115,6 +107,6 @@ docker compose up -d --build
 - For LINE / WeCom and other webhook-based platforms, expose the configured ports in `docker-compose.yml`.
 - If you use bot mode, make sure the workspace root in `config.toml` matches a mounted container path such as `/workspace`.
 - The compose service sets `HOME=/data/.home` so Codex and other CLIs keep their writable state inside the mounted data directory.
-- If you need proxy access at runtime, use `DOCKER_HTTP_PROXY` / `DOCKER_HTTPS_PROXY` / `DOCKER_ALL_PROXY` and point them to `host.docker.internal` instead of `127.0.0.1`.
+- If you need proxy access, set `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` in your shell or edit `docker-compose.yml`.
 - The provided `docker-compose.yml` also forwards proxy variables into the image build, so `docker compose up -d --build` works behind a proxy without extra edits.
 - The provided `docker-compose.yml` uses `build.network: host`, which is useful on Linux when your proxy listens on `127.0.0.1`.

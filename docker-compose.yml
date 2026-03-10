@@ -19,15 +19,13 @@ services:
     working_dir: /data
     volumes:
       - ./docker-data:/data
-      - /home/tz/workspace:/workspace
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - ${HOME}/workspace:/workspace
     environment:
       HOME: /data/.home
       TZ: ${TZ:-UTC}
-      HTTP_PROXY: ${DOCKER_HTTP_PROXY:-}
-      HTTPS_PROXY: ${DOCKER_HTTPS_PROXY:-}
-      ALL_PROXY: ${DOCKER_ALL_PROXY:-}
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      ALL_PROXY: ${ALL_PROXY:-}
 
     # Uncomment when using LINE / WeCom or other webhook-based platforms.
     # ports:
