@@ -1,8 +1,26 @@
-FROM golang:1.24-alpine AS builder
+FROM golang:1.24-bookworm AS builder
+
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG ALL_PROXY
+ARG http_proxy
+ARG https_proxy
+ARG all_proxy
+ARG NO_PROXY
+ARG no_proxy
+
+ENV HTTP_PROXY=${HTTP_PROXY} \
+    HTTPS_PROXY=${HTTPS_PROXY} \
+    ALL_PROXY=${ALL_PROXY} \
+    http_proxy=${http_proxy} \
+    https_proxy=${https_proxy} \
+    all_proxy=${all_proxy} \
+    NO_PROXY=${NO_PROXY} \
+    no_proxy=${no_proxy}
 
 WORKDIR /src
 
-RUN apk add --no-cache git
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 
 COPY go.mod go.sum ./
 RUN go mod download
@@ -18,13 +36,38 @@ RUN CGO_ENABLED=0 go build \
   -o /out/cc-connect \
   ./cmd/cc-connect
 
-FROM node:22-alpine
+FROM node:22-bookworm-slim
 
-RUN apk add --no-cache bash ca-certificates ffmpeg git tini
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG ALL_PROXY
+ARG http_proxy
+ARG https_proxy
+ARG all_proxy
+ARG NO_PROXY
+ARG no_proxy
+
+ENV HTTP_PROXY=${HTTP_PROXY} \
+    HTTPS_PROXY=${HTTPS_PROXY} \
+    ALL_PROXY=${ALL_PROXY} \
+    http_proxy=${http_proxy} \
+    https_proxy=${https_proxy} \
+    all_proxy=${all_proxy} \
+    NO_PROXY=${NO_PROXY} \
+    no_proxy=${no_proxy}
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash \
+    ca-certificates \
+    ffmpeg \
+    git \
+    tini \
+  && rm -rf /var/lib/apt/lists/*
+RUN npm install -g @openai/codex
 
 WORKDIR /data
 
 COPY --from=builder /out/cc-connect /usr/local/bin/cc-connect
 
-ENTRYPOINT ["/sbin/tini", "--", "cc-connect"]
+ENTRYPOINT ["/usr/bin/tini", "--", "cc-connect"]
 CMD ["--config", "/data/config.toml"]

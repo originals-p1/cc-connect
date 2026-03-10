@@ -142,7 +142,7 @@ cp config.example.toml docker-data/config.toml
 docker compose up -d --build
 ```
 
-卷挂载、配置路径、Webhook 端口暴露、以及为 agent CLI 派生镜像的示例，见 [docs/docker-compose.md](docs/docker-compose.md)。
+默认镜像已包含 `cc-connect`、`ffmpeg` 和 Codex CLI。卷挂载、配置路径、Webhook 端口暴露、以及为其他 agent CLI 派生镜像的示例，见 [docs/docker-compose.md](docs/docker-compose.md)。
 
 ### 配置
 
