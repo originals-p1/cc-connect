@@ -5,11 +5,10 @@ This repository ships a `Dockerfile` and `docker-compose.yml` for running `cc-co
 The stock image includes:
 
 - `cc-connect`
-- `ffmpeg`
 - `node` / `npm`
 - `codex` (`@openai/codex`)
 
-The stock image does **not** preinstall every supported agent CLI. Codex works out of the box. If you use Gemini CLI, iFlow, OpenCode, Cursor Agent, Qoder CLI, or Claude Code inside the container, install the required CLI in a derived image or extend the container at runtime.
+The stock image is intentionally minimal and only preinstalls Codex. If you use Gemini CLI, iFlow, OpenCode, Cursor Agent, Qoder CLI, Claude Code, or voice features that require `ffmpeg`, install the required tools in a derived image.
 
 ## 1. Prepare directories
 
@@ -65,11 +64,13 @@ token = "123456:ABC-xxx"
 
 Codex is already included. Extend the image only when you need other agent CLIs.
 
-Example for Gemini CLI:
+Example for Gemini CLI and voice support:
 
 ```dockerfile
 FROM cc-connect:local
 
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+  && rm -rf /var/lib/apt/lists/*
 RUN npm install -g @google/gemini-cli
 ```
 
