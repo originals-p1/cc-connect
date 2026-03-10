@@ -621,6 +621,9 @@ func startBotMode(cfg *config.Config) (func(), error) {
 			DefaultProject: bot.DefaultProject,
 			DMOnly:         bot.DMOnly == nil || *bot.DMOnly,
 			Catalog:        catalog,
+			RefreshCatalog: func() (*core.ProjectCatalog, error) {
+				return core.ScanWorkspace(cfg.Workspace.Root, requireGit)
+			},
 			Bindings:       bindings,
 		}
 		if bot.DefaultProject != "" {

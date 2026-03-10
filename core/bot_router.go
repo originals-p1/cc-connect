@@ -13,6 +13,7 @@ type BotRouter struct {
 	DefaultProject string
 	DMOnly         bool
 	Catalog        *ProjectCatalog
+	RefreshCatalog func() (*ProjectCatalog, error)
 	Bindings       *BindingStore
 	Runtimes       *BotRuntimeManager
 	ProjectKey     func(*Message) BindingKey
@@ -97,6 +98,14 @@ func (r *BotRouter) handleProjectCommand(p Platform, msg *Message) {
 }
 
 func (r *BotRouter) cmdList(p Platform, msg *Message) {
+	if r.RefreshCatalog != nil {
+		catalog, err := r.RefreshCatalog()
+		if err != nil {
+			_ = p.Reply(context.Background(), msg.ReplyCtx, fmt.Sprintf("Project scan failed: %v", err))
+		} else if catalog != nil {
+			r.Catalog = catalog
+		}
+	}
 	if r.Catalog == nil || len(r.Catalog.Projects) == 0 {
 		_ = p.Reply(context.Background(), msg.ReplyCtx, "No projects found in workspace.")
 		return

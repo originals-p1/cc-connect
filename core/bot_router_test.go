@@ -73,6 +73,85 @@ func TestBotRouterProjectListButtons(t *testing.T) {
 	}
 }
 
+func TestBotRouterProjectListRefreshesCatalog(t *testing.T) {
+	p := &stubPlatformEngine{n: "test"}
+	router := newTestBotRouter(p)
+	router.Catalog = &ProjectCatalog{
+		Root: "/workspace",
+		Projects: map[string]ProjectInfo{
+			"repo-old": {Name: "repo-old", Path: "/workspace/repo-old", GitRoot: "/workspace/repo-old"},
+		},
+	}
+	refreshCalls := 0
+	router.RefreshCatalog = func() (*ProjectCatalog, error) {
+		refreshCalls++
+		return &ProjectCatalog{
+			Root: "/workspace",
+			Projects: map[string]ProjectInfo{
+				"repo-new": {Name: "repo-new", Path: "/workspace/repo-new", GitRoot: "/workspace/repo-new"},
+			},
+		}, nil
+	}
+
+	router.HandleMessage(p, &Message{
+		Platform: "telegram",
+		UserID:   "u1",
+		IsDM:     true,
+		Content:  "/project-list",
+	})
+
+	if refreshCalls != 1 {
+		t.Fatalf("refreshCalls = %d, want 1", refreshCalls)
+	}
+	if router.Catalog == nil {
+		t.Fatal("router catalog = nil, want refreshed catalog")
+	}
+	if _, ok := router.Catalog.Projects["repo-new"]; !ok {
+		t.Fatalf("catalog projects = %v, want repo-new", router.Catalog.Projects)
+	}
+	if len(p.buttonLayout) == 0 || len(p.buttonLayout[0]) == 0 {
+		t.Fatalf("buttonLayout = %v, want refreshed buttons", p.buttonLayout)
+	}
+	if p.buttonLayout[0][0].Data != "cmd:/project switch repo-new" {
+		t.Fatalf("first button data = %q, want refreshed project switch command", p.buttonLayout[0][0].Data)
+	}
+}
+
+func TestBotRouterProjectCommandListRefreshesCatalog(t *testing.T) {
+	p := &plainBotPlatform{n: "test"}
+	router := newTestBotRouter(&stubPlatformEngine{n: "test"})
+	router.Catalog = &ProjectCatalog{
+		Root: "/workspace",
+		Projects: map[string]ProjectInfo{
+			"repo-old": {Name: "repo-old", Path: "/workspace/repo-old", GitRoot: "/workspace/repo-old"},
+		},
+	}
+	refreshCalls := 0
+	router.RefreshCatalog = func() (*ProjectCatalog, error) {
+		refreshCalls++
+		return &ProjectCatalog{
+			Root: "/workspace",
+			Projects: map[string]ProjectInfo{
+				"repo-new": {Name: "repo-new", Path: "/workspace/repo-new", GitRoot: "/workspace/repo-new"},
+			},
+		}, nil
+	}
+
+	router.HandleMessage(p, &Message{
+		Platform: "telegram",
+		UserID:   "u1",
+		IsDM:     true,
+		Content:  "/project list",
+	})
+
+	if refreshCalls != 1 {
+		t.Fatalf("refreshCalls = %d, want 1", refreshCalls)
+	}
+	if len(p.sent) == 0 || p.sent[0] != "Projects:\n- repo-new" {
+		t.Fatalf("sent = %v, want refreshed project list", p.sent)
+	}
+}
+
 func TestBotRouterProjectSwitchAndCurrent(t *testing.T) {
 	p := &stubPlatformEngine{n: "test"}
 	router := newTestBotRouter(p)
