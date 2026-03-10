@@ -1,0 +1,10 @@
+.git
+.github
+dist
+node_modules
+npm/node_modules
+coverage
+cc-connect
+config.toml
+.cc-connect
+.ccc
