@@ -138,6 +138,49 @@ func TestSessionManager_Persistence(t *testing.T) {
 	}
 }
 
+func TestSessionManager_ClearAgentSessionsForUser(t *testing.T) {
+	sm := NewSessionManager("")
+
+	keep := sm.NewSession("user1", "keep")
+	keep.AgentSessionID = "agent-keep"
+
+	removeA := sm.NewSession("user1", "remove-a")
+	removeA.AgentSessionID = "agent-a"
+
+	removeB := sm.NewSession("user1", "remove-b")
+	removeB.AgentSessionID = "agent-b"
+
+	sm.SetSessionName("agent-a", "name-a")
+	sm.SetSessionName("agent-b", "name-b")
+	sm.SetSessionName("agent-keep", "name-keep")
+
+	if _, err := sm.SwitchSession("user1", removeB.ID); err != nil {
+		t.Fatalf("SwitchSession: %v", err)
+	}
+
+	sm.ClearAgentSessionsForUser("user1", []string{"agent-a", "agent-b"})
+
+	list := sm.ListSessions("user1")
+	if len(list) != 1 {
+		t.Fatalf("expected 1 remaining session, got %d", len(list))
+	}
+	if list[0].ID != keep.ID {
+		t.Fatalf("remaining session = %q, want %q", list[0].ID, keep.ID)
+	}
+	if got := sm.ActiveSessionID("user1"); got != "" {
+		t.Fatalf("active session = %q, want empty", got)
+	}
+	if got := sm.GetSessionName("agent-a"); got != "" {
+		t.Fatalf("deleted session name agent-a = %q, want empty", got)
+	}
+	if got := sm.GetSessionName("agent-b"); got != "" {
+		t.Fatalf("deleted session name agent-b = %q, want empty", got)
+	}
+	if got := sm.GetSessionName("agent-keep"); got != "name-keep" {
+		t.Fatalf("kept session name = %q, want name-keep", got)
+	}
+}
+
 func TestSession_TryLockUnlock(t *testing.T) {
 	s := &Session{}
 	if !s.TryLock() {

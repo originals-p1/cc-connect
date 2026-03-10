@@ -173,6 +173,55 @@ func (sm *SessionManager) ListSessions(userKey string) []*Session {
 	return out
 }
 
+func (sm *SessionManager) ClearAgentSessionsForUser(userKey string, agentSessionIDs []string) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	if len(agentSessionIDs) == 0 {
+		return
+	}
+
+	deleted := make(map[string]struct{}, len(agentSessionIDs))
+	for _, id := range agentSessionIDs {
+		if id == "" {
+			continue
+		}
+		deleted[id] = struct{}{}
+		delete(sm.sessionNames, id)
+	}
+
+	filtered := sm.userSessions[userKey][:0]
+	activeID := sm.activeSession[userKey]
+	clearActive := false
+
+	for _, sid := range sm.userSessions[userKey] {
+		s, ok := sm.sessions[sid]
+		if !ok {
+			continue
+		}
+		if _, shouldDelete := deleted[s.AgentSessionID]; shouldDelete {
+			delete(sm.sessions, sid)
+			if sid == activeID {
+				clearActive = true
+			}
+			continue
+		}
+		filtered = append(filtered, sid)
+	}
+
+	if len(filtered) == 0 {
+		delete(sm.userSessions, userKey)
+	} else {
+		sm.userSessions[userKey] = filtered
+	}
+
+	if clearActive {
+		delete(sm.activeSession, userKey)
+	}
+
+	sm.saveLocked()
+}
+
 func (sm *SessionManager) ActiveSessionID(userKey string) string {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()

@@ -1259,6 +1259,7 @@ var builtinCommands = []struct {
 	{[]string{"restart"}, "restart"},
 	{[]string{"alias"}, "alias"},
 	{[]string{"delete", "del", "rm"}, "delete"},
+	{[]string{"clear"}, "clear"},
 	{[]string{"bind"}, "bind"},
 	{[]string{"search", "find"}, "search"},
 	{[]string{"shell", "sh", "exec", "run"}, "shell"},
@@ -1384,6 +1385,8 @@ func (e *Engine) handleCommand(p Platform, msg *Message, raw string) bool {
 		e.cmdAlias(p, msg, args)
 	case "delete":
 		e.cmdDelete(p, msg, args)
+	case "clear":
+		e.cmdClear(p, msg)
 	case "bind":
 		e.cmdBind(p, msg, args)
 	case "search":
@@ -3792,6 +3795,33 @@ func (e *Engine) cmdDelete(p Platform, msg *Message, args []string) {
 
 	e.sessions.SetSessionName(matched.ID, "")
 	e.reply(p, msg.ReplyCtx, fmt.Sprintf(e.i18n.T(MsgDeleteSuccess), displayName))
+}
+
+func (e *Engine) cmdClear(p Platform, msg *Message) {
+	deleter, ok := e.agent.(SessionDeleter)
+	if !ok {
+		e.reply(p, msg.ReplyCtx, e.i18n.T(MsgClearNotSupported))
+		return
+	}
+
+	agentSessions, err := e.agent.ListSessions(e.ctx)
+	if err != nil {
+		e.reply(p, msg.ReplyCtx, fmt.Sprintf("❌ %v", err))
+		return
+	}
+
+	deletedIDs := make([]string, 0, len(agentSessions))
+	for _, session := range agentSessions {
+		if err := deleter.DeleteSession(e.ctx, session.ID); err != nil {
+			e.reply(p, msg.ReplyCtx, fmt.Sprintf("❌ %v", err))
+			return
+		}
+		deletedIDs = append(deletedIDs, session.ID)
+	}
+
+	e.cleanupInteractiveState(msg.SessionKey)
+	e.sessions.ClearAgentSessionsForUser(msg.SessionKey, deletedIDs)
+	e.reply(p, msg.ReplyCtx, fmt.Sprintf(e.i18n.T(MsgClearSuccess), len(deletedIDs)))
 }
 
 // truncateIf truncates s to maxLen runes. 0 means no truncation.

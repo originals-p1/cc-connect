@@ -300,6 +300,8 @@ const (
 	MsgDeleteSuccess      MsgKey = "delete_success"
 	MsgDeleteActiveDenied MsgKey = "delete_active_denied"
 	MsgDeleteNotSupported MsgKey = "delete_not_supported"
+	MsgClearSuccess       MsgKey = "clear_success"
+	MsgClearNotSupported  MsgKey = "clear_not_supported"
 
 	MsgSwitchSuccess   MsgKey = "switch_success"
 	MsgSwitchNoMatch   MsgKey = "switch_no_match"
@@ -338,6 +340,7 @@ const (
 	MsgBuiltinCmdSearch   MsgKey = "search"
 	MsgBuiltinCmdSwitch   MsgKey = "switch"
 	MsgBuiltinCmdDelete   MsgKey = "delete"
+	MsgBuiltinCmdClear    MsgKey = "clear"
 	MsgBuiltinCmdName     MsgKey = "name"
 	MsgBuiltinCmdCurrent  MsgKey = "current"
 	MsgBuiltinCmdHistory  MsgKey = "history"
@@ -587,6 +590,7 @@ var messages = map[MsgKey]map[Language]string{
 			"/search <keyword>\n  Search sessions by name or ID\n\n" +
 			"/switch <number>\n  Resume a session by its list number\n\n" +
 			"/delete <number>\n  Delete a session by its list number\n\n" +
+			"/clear\n  Clear all sessions for this project\n\n" +
 			"/name [number] <text>\n  Name a session for easy identification\n\n" +
 			"/current\n  Show current active session\n\n" +
 			"/history [n]\n  Show last n messages (default 10)\n\n" +
@@ -623,6 +627,7 @@ var messages = map[MsgKey]map[Language]string{
 			"/search <关键词>\n  搜索会话名称或 ID\n\n" +
 			"/switch <序号>\n  按列表序号切换会话\n\n" +
 			"/delete <序号>\n  按列表序号删除会话\n\n" +
+			"/clear\n  清空当前项目的全部会话\n\n" +
 			"/name [序号] <名称>\n  给会话命名，方便识别\n\n" +
 			"/current\n  查看当前活跃会话\n\n" +
 			"/history [n]\n  查看最近 n 条消息（默认 10）\n\n" +
@@ -659,6 +664,7 @@ var messages = map[MsgKey]map[Language]string{
 			"/search <關鍵詞>\n  搜尋會話名稱或 ID\n\n" +
 			"/switch <序號>\n  按列表序號切換會話\n\n" +
 			"/delete <序號>\n  按列表序號刪除會話\n\n" +
+			"/clear\n  清空目前專案的全部會話\n\n" +
 			"/name [序號] <名稱>\n  為會話命名，方便辨識\n\n" +
 			"/current\n  查看當前活躍會話\n\n" +
 			"/history [n]\n  查看最近 n 條訊息（預設 10）\n\n" +
@@ -694,6 +700,7 @@ var messages = map[MsgKey]map[Language]string{
 			"/list\n  エージェントセッション一覧\n\n" +
 			"/switch <番号>\n  リスト番号でセッションを切り替え\n\n" +
 			"/delete <番号>\n  リスト番号でセッションを削除\n\n" +
+			"/clear\n  現在のプロジェクトの全セッションを削除\n\n" +
 			"/name [番号] <名前>\n  セッションに名前を付ける\n\n" +
 			"/current\n  現在のアクティブセッションを表示\n\n" +
 			"/history [n]\n  直近 n 件のメッセージを表示（デフォルト 10）\n\n" +
@@ -729,6 +736,7 @@ var messages = map[MsgKey]map[Language]string{
 			"/list\n  Listar sesiones del agente\n\n" +
 			"/switch <número>\n  Reanudar sesión por su número en la lista\n\n" +
 			"/delete <número>\n  Eliminar sesión por su número en la lista\n\n" +
+			"/clear\n  Borrar todas las sesiones de este proyecto\n\n" +
 			"/name [número] <texto>\n  Nombrar una sesión para fácil identificación\n\n" +
 			"/current\n  Mostrar sesión activa actual\n\n" +
 			"/history [n]\n  Mostrar últimos n mensajes (por defecto 10)\n\n" +
@@ -1778,6 +1786,20 @@ var messages = map[MsgKey]map[Language]string{
 		LangJapanese:           "❌ このエージェントはセッション削除をサポートしていません。",
 		LangSpanish:            "❌ Este agente no admite la eliminación de sesiones.",
 	},
+	MsgClearSuccess: {
+		LangEnglish:            "✅ Cleared %d sessions.",
+		LangChinese:            "✅ 已清空 %d 个会话。",
+		LangTraditionalChinese: "✅ 已清空 %d 個會話。",
+		LangJapanese:           "✅ %d 件のセッションを削除しました。",
+		LangSpanish:            "✅ Se eliminaron %d sesiones.",
+	},
+	MsgClearNotSupported: {
+		LangEnglish:            "❌ This agent does not support clearing sessions.",
+		LangChinese:            "❌ 当前 Agent 不支持清空会话。",
+		LangTraditionalChinese: "❌ 當前 Agent 不支持清空會話。",
+		LangJapanese:           "❌ このエージェントはセッション一括削除をサポートしていません。",
+		LangSpanish:            "❌ Este agente no admite borrar todas las sesiones.",
+	},
 	MsgBannedWordBlocked: {
 		LangEnglish:            "⚠️ Your message was blocked because it contains a prohibited word.",
 		LangChinese:            "⚠️ 消息已被拦截，包含违禁词。",
@@ -1950,6 +1972,13 @@ var messages = map[MsgKey]map[Language]string{
 		LangTraditionalChinese: "按列表序號刪除會話，參數: <序號>",
 		LangJapanese:           "リスト番号でセッションを削除、引数: <番号>",
 		LangSpanish:            "Eliminar sesión por su número en la lista, arg: <número>",
+	},
+	MsgBuiltinCmdClear: {
+		LangEnglish:            "Clear all sessions for the current project",
+		LangChinese:            "清空当前项目的全部会话",
+		LangTraditionalChinese: "清空目前專案的全部會話",
+		LangJapanese:           "現在のプロジェクトの全セッションを削除",
+		LangSpanish:            "Borrar todas las sesiones del proyecto actual",
 	},
 	MsgBuiltinCmdName: {
 		LangEnglish:            "Name a session for easy identification, arg: [number] <text>",
