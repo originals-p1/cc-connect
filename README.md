@@ -133,18 +133,6 @@ cd cc-connect
 make build
 ```
 
-**Deploy with Docker Compose:**
-
-```bash
-git clone https://github.com/chenhg5/cc-connect.git
-cd cc-connect
-mkdir -p docker-data
-cp config.example.toml docker-data/config.toml
-docker compose up -d --build
-```
-
-See [docs/docker-compose.md](docs/docker-compose.md) for volume layout, config paths, webhook ports, and derived-image examples for agent CLIs.
-
 ### Configure
 
 ```bash

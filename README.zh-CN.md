@@ -132,18 +132,6 @@ cd cc-connect
 make build
 ```
 
-**通过 Docker Compose 部署：**
-
-```bash
-git clone https://github.com/chenhg5/cc-connect.git
-cd cc-connect
-mkdir -p docker-data
-cp config.example.toml docker-data/config.toml
-docker compose up -d --build
-```
-
-卷挂载、配置路径、Webhook 端口暴露、以及为 agent CLI 派生镜像的示例，见 [docs/docker-compose.md](docs/docker-compose.md)。
-
 ### 配置
 
 ```bash
