@@ -97,6 +97,8 @@ DOCKER_HTTPS_PROXY=http://host.docker.internal:7890
 DOCKER_ALL_PROXY=http://host.docker.internal:7890
 ```
 
+The compose file applies these values to both uppercase and lowercase proxy variables because different CLIs and SDKs read different variants.
+
 ## 5. Logs
 
 ```bash

@@ -62,6 +62,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && rm -rf /var/lib/apt/lists/*
 RUN npm install -g @openai/codex
 
+ENV HTTP_PROXY= \
+    HTTPS_PROXY= \
+    ALL_PROXY= \
+    http_proxy= \
+    https_proxy= \
+    all_proxy= \
+    NO_PROXY= \
+    no_proxy=
+
 WORKDIR /data
 
 COPY --from=builder /out/cc-connect /usr/local/bin/cc-connect

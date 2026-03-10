@@ -28,6 +28,9 @@ services:
       HTTP_PROXY: ${DOCKER_HTTP_PROXY:-}
       HTTPS_PROXY: ${DOCKER_HTTPS_PROXY:-}
       ALL_PROXY: ${DOCKER_ALL_PROXY:-}
+      http_proxy: ${DOCKER_HTTP_PROXY:-}
+      https_proxy: ${DOCKER_HTTPS_PROXY:-}
+      all_proxy: ${DOCKER_ALL_PROXY:-}
 
     # Uncomment when using LINE / WeCom or other webhook-based platforms.
     # ports:
