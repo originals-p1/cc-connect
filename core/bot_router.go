@@ -24,7 +24,14 @@ func (r *BotRouter) HandleMessage(p Platform, msg *Message) {
 		return
 	}
 
-	if strings.HasPrefix(strings.TrimSpace(msg.Content), "/project") {
+	trimmed := strings.TrimSpace(msg.Content)
+
+	if strings.HasPrefix(trimmed, "/project-list") || strings.HasPrefix(trimmed, "/project_list") {
+		r.cmdList(p, msg)
+		return
+	}
+
+	if strings.HasPrefix(trimmed, "/project") {
 		r.handleProjectCommand(p, msg)
 		return
 	}
@@ -99,6 +106,24 @@ func (r *BotRouter) cmdList(p Platform, msg *Message) {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+
+	if bs, ok := p.(InlineButtonSender); ok {
+		buttons := make([][]ButtonOption, 0, (len(names)+1)/2)
+		for i := 0; i < len(names); i += 2 {
+			row := make([]ButtonOption, 0, 2)
+			for j := i; j < len(names) && j < i+2; j++ {
+				row = append(row, ButtonOption{
+					Text: names[j],
+					Data: "cmd:/project switch " + names[j],
+				})
+			}
+			buttons = append(buttons, row)
+		}
+		if err := bs.SendWithButtons(context.Background(), msg.ReplyCtx, "Select a project:", buttons); err == nil {
+			return
+		}
+	}
+
 	_ = p.Reply(context.Background(), msg.ReplyCtx, "Projects:\n- "+strings.Join(names, "\n- "))
 }
 

@@ -685,6 +685,9 @@ func registerBotModeCommands(p core.Platform, router *core.BotRouter, runtimeMgr
 	commands := []core.BotCommandInfo{{
 		Command:     "project",
 		Description: "List or switch projects",
+	}, {
+		Command:     "project_list",
+		Description: "Show projects as buttons",
 	}}
 
 	if runtimeMgr != nil {

@@ -1,6 +1,20 @@
 package core
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
+
+type plainBotPlatform struct {
+	n    string
+	sent []string
+}
+
+func (p *plainBotPlatform) Name() string                                         { return p.n }
+func (p *plainBotPlatform) Start(MessageHandler) error                           { return nil }
+func (p *plainBotPlatform) Reply(_ context.Context, _ any, content string) error { p.sent = append(p.sent, content); return nil }
+func (p *plainBotPlatform) Send(_ context.Context, _ any, content string) error  { p.sent = append(p.sent, content); return nil }
+func (p *plainBotPlatform) Stop() error                                          { return nil }
 
 func newTestBotRouter(p *stubPlatformEngine) *BotRouter {
 	catalog := testCatalog()
@@ -22,8 +36,8 @@ func newTestBotRouter(p *stubPlatformEngine) *BotRouter {
 }
 
 func TestBotRouterProjectList(t *testing.T) {
-	p := &stubPlatformEngine{n: "test"}
-	router := newTestBotRouter(p)
+	p := &plainBotPlatform{n: "test"}
+	router := newTestBotRouter(&stubPlatformEngine{n: "test"})
 
 	router.HandleMessage(p, &Message{
 		Platform: "telegram",
@@ -34,6 +48,28 @@ func TestBotRouterProjectList(t *testing.T) {
 
 	if len(p.sent) == 0 || p.sent[0] == "" {
 		t.Fatal("expected /project list reply")
+	}
+}
+
+func TestBotRouterProjectListButtons(t *testing.T) {
+	p := &stubPlatformEngine{n: "test"}
+	router := newTestBotRouter(p)
+
+	router.HandleMessage(p, &Message{
+		Platform: "telegram",
+		UserID:   "u1",
+		IsDM:     true,
+		Content:  "/project-list",
+	})
+
+	if len(p.buttonText) != 1 {
+		t.Fatalf("buttonText = %v, want one button response", p.buttonText)
+	}
+	if len(p.buttonLayout) == 0 || len(p.buttonLayout[0]) == 0 {
+		t.Fatalf("buttonLayout = %v, want at least one button", p.buttonLayout)
+	}
+	if p.buttonLayout[0][0].Data != "cmd:/project switch repo-a" {
+		t.Fatalf("first button data = %q, want project switch command", p.buttonLayout[0][0].Data)
 	}
 }
 

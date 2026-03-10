@@ -26,8 +26,10 @@ func (s *stubAgentSession) Alive() bool                                        {
 func (s *stubAgentSession) Close() error                                       { return nil }
 
 type stubPlatformEngine struct {
-	n    string
-	sent []string
+	n            string
+	sent         []string
+	buttonText   []string
+	buttonLayout [][]ButtonOption
 }
 
 func (p *stubPlatformEngine) Name() string                                           { return p.n }
@@ -35,6 +37,11 @@ func (p *stubPlatformEngine) Start(MessageHandler) error                        
 func (p *stubPlatformEngine) Reply(_ context.Context, _ any, content string) error   { p.sent = append(p.sent, content); return nil }
 func (p *stubPlatformEngine) Send(_ context.Context, _ any, content string) error    { p.sent = append(p.sent, content); return nil }
 func (p *stubPlatformEngine) Stop() error                                            { return nil }
+func (p *stubPlatformEngine) SendWithButtons(_ context.Context, _ any, content string, buttons [][]ButtonOption) error {
+	p.buttonText = append(p.buttonText, content)
+	p.buttonLayout = buttons
+	return nil
+}
 
 func newTestEngine() *Engine {
 	return NewEngine("test", &stubAgent{}, []Platform{&stubPlatformEngine{n: "test"}}, "", LangEnglish)
