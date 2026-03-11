@@ -1,88 +1,167 @@
 # AGENTS.md
 
-This file is for coding agents working in this repository. Use it as the execution guide. For deeper architecture and domain context, read `docs/AI_CONTEXT.md`.
+## Agent Operating Guide
 
-## Project Snapshot
+This repository is designed to be operated by software agents and human developers.
 
-- Language: Go
-- Entry point: `cmd/cc-connect/main.go`
-- Core flow: platform receives message -> `core.Engine` routes it -> agent session processes it -> platform sends replies back
-- Main areas:
-  - `cmd/cc-connect/`: CLI entrypoint and subcommands
-  - `core/`: engine, sessions, commands, events, registries, shared infrastructure
-  - `config/`: TOML config schema, validation, persistence helpers
-  - `agent/`: integrations for Claude Code, Codex, Cursor, Gemini, Qoder, OpenCode, iFlow
-  - `platform/`: chat platform integrations
-  - `daemon/`: daemon/service management
+The goal of this document is to provide **a minimal entry point** for understanding the repository.
 
-## Where To Change Code
+Detailed documentation exists elsewhere.
 
-- Add or modify an agent:
-  - `agent/<name>/`
-  - `core/interfaces.go`
-  - `core/registry.go`
-  - `cmd/cc-connect/main.go`
+---
 
-- Add or modify a platform:
-  - `platform/<name>/`
-  - `core/interfaces.go`
-  - `core/registry.go`
-  - `cmd/cc-connect/main.go`
+## 1. Start Here
 
-- Change message routing, slash commands, sessions, or event handling:
-  - `core/engine.go`
-  - `core/session.go`
-  - `core/message.go`
-  - `core/i18n.go`
+Before making changes read:
 
-- Change config schema or persisted settings:
-  - `config/config.go`
-  - `config.example.toml`
-  - relevant docs in `README.md` or `docs/`
+- [ARCHITECTURE.md](ARCHITECTURE.md)
+- [docs/VALIDATION.md](docs/VALIDATION.md)
+- [docs/TASK_RECIPES.md](docs/TASK_RECIPES.md)
+- [docs/generated/repo-index.json](docs/generated/repo-index.json)
 
-- Change CLI behavior or subcommands:
-  - `cmd/cc-connect/*.go`
+These documents define:
 
-- Change relay, cron, provider, STT/TTS, or API helpers:
-  - `core/relay.go`
-  - `core/cron.go`
-  - `cmd/cc-connect/provider.go`
-  - `core/speech.go`
-  - `core/tts.go`
-  - `core/api.go`
+- system architecture
+- task workflows
+- validation procedures
+- repository structure
 
-## Working Rules
+Agents should prefer **structured metadata** (`repo-index.json`) when available, then follow links into the corresponding source documents.
 
-- Read the relevant package before editing. This repo uses package-level conventions heavily.
-- New agents and platforms must register themselves in `init()` and must also be blank-imported in `cmd/cc-connect/main.go`.
-- Do not change config shape in one place only. Keep schema, validation, defaulting, example config, and user-facing docs aligned.
-- If a change affects slash commands, help text, or user-visible messages, check `core/i18n.go`.
-- Respect the project model: one `[[projects]]` entry binds one agent to one or more platforms.
-- Preserve existing package patterns unless there is a clear reason to refactor. This codebase prefers consistency over clever abstractions.
-- Keep docs changes focused. `AGENTS.md` is for agent workflow; `docs/AI_CONTEXT.md` is the deeper reference.
+---
 
-## Validation
+## 2. Standard Workflow
 
-- Preferred full validation:
-  - `go test ./...`
-  - `make build`
+For any non-trivial change follow this workflow:
 
-- If you touch a narrow area, run targeted package tests first, then run broader validation if the change can affect shared flow.
-- Do not claim completion without at least one concrete verification command.
+Context → Plan → Implement → Validate → Finalize
 
-## Documentation Sync
+### Context
 
-Update docs when behavior changes:
+Understand the repository by reading:
 
-- `config.example.toml` for config additions or option changes
-- `README.md` for install, usage, support matrix, or top-level workflow changes
-- `docs/*.md` for platform-specific behavior
-- `docs/AI_CONTEXT.md` only when structural project knowledge has changed materially
+- [ARCHITECTURE.md](ARCHITECTURE.md)
+- [docs/generated/repo-index.json](docs/generated/repo-index.json)
+- existing execution plans in [`docs/plans/`](docs/plans/) or [`docs/exec-plans/active/`](docs/exec-plans/active/)
 
-## Common Gotchas
+---
 
-- Forgetting the blank import in `cmd/cc-connect/main.go` will make a new agent or platform invisible at runtime.
-- Config changes often need updates in more than one place: struct tags, validation, defaults, save/load helpers, and docs.
-- User-facing command changes often require matching text updates in `core/i18n.go`.
-- `core.Engine` is a high-coupling area. Be careful with changes that affect sessions, permissions, streaming, relay, or command handling.
-- Existing worktrees may be dirty. Avoid reverting unrelated user changes.
+### Plan
+
+Create a plan in:
+
+[`docs/exec-plans/active/`](docs/exec-plans/active/)
+
+Plan must include:
+
+- objective
+- affected modules
+- approach
+- validation strategy
+- rollback plan
+
+---
+
+### Implement
+
+When modifying code:
+
+- keep changes minimal
+- avoid modifying unrelated modules
+- respect architecture boundaries
+
+---
+
+### Validate
+
+Validation rules are defined in:
+
+[`docs/VALIDATION.md`](docs/VALIDATION.md)
+
+Typical validation:
+
+- build
+- unit tests
+- integration tests
+- benchmark (if performance-sensitive)
+
+---
+
+### Finalize
+
+After successful validation:
+
+- update relevant documentation
+- move plan to:
+
+  [`docs/exec-plans/completed/`](docs/exec-plans/completed/)
+
+---
+
+## 3. Architectural Rules
+
+Architectural constraints are defined in:
+
+[`ARCHITECTURE.md`](ARCHITECTURE.md)
+
+Core rules:
+
+- no circular dependencies
+- no cross-layer dependencies
+- modules interact through public interfaces only
+
+---
+
+## 4. Performance Sensitive Modules
+
+Some modules are performance critical.
+
+Changes to these modules require:
+
+- benchmark validation
+- regression checks
+- CPU/memory impact analysis
+
+See [`docs/VALIDATION.md`](docs/VALIDATION.md).
+
+---
+
+## 5. Task Types
+
+Tasks are categorized as:
+
+bugfix
+feature
+refactor
+perf
+docs
+analysis
+
+Task workflows are defined in:
+
+[`docs/TASK_RECIPES.md`](docs/TASK_RECIPES.md)
+
+---
+
+## 6. Repository Structure
+
+Machine-readable repository structure:
+
+[`docs/generated/repo-index.json`](docs/generated/repo-index.json)
+
+Agents should use this file to understand modules and dependencies.
+
+---
+
+## 7. Safety Rules
+
+Agents must follow these principles:
+
+- minimal change
+- validation first
+- maintain architectural integrity
+- ensure rollback capability
+
+If uncertain, create a plan instead of guessing.
+
+---

@@ -931,6 +931,18 @@ cc-connect/
 └── README.md
 ```
 
+## Development Checks
+
+For repository-governance validation, run:
+
+```bash
+make check-harness
+```
+
+This checks that every package under `agent/` and `platform/` is blank-imported in `cmd/cc-connect/main.go`.
+
+For the broader contributor workflow and quality gates, see [docs/harness/index.md](docs/harness/index.md).
+
 ## Community
 
 - [Discord](https://discord.gg/kHpwgaM4kq)

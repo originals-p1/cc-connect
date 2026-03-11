@@ -1,0 +1,79 @@
+{
+  "repo": {
+    "name": "cc-connect",
+    "language": "Go",
+    "entrypoint": "cmd/cc-connect/main.go",
+    "purpose": "Bridge local AI coding agents to chat platforms."
+  },
+  "docs": {
+    "agent_guide": "AGENTS.md",
+    "architecture": "ARCHITECTURE.md",
+    "validation": "docs/VALIDATION.md",
+    "task_recipes": "docs/TASK_RECIPES.md",
+    "deep_context": "docs/AI_CONTEXT.md",
+    "harness_index": "docs/harness/index.md",
+    "plans_root": "docs/exec-plans",
+    "exec_plans_active": "docs/exec-plans/active",
+    "exec_plans_completed": "docs/exec-plans/completed"
+  },
+  "areas": [
+    {
+      "path": "cmd/cc-connect",
+      "role": "CLI entrypoint and subcommands"
+    },
+    {
+      "path": "core",
+      "role": "Engine, sessions, routing, events, commands, skills, relay, speech, cron"
+    },
+    {
+      "path": "config",
+      "role": "TOML schema, validation, defaults, persistence helpers"
+    },
+    {
+      "path": "agent",
+      "role": "Agent integrations"
+    },
+    {
+      "path": "platform",
+      "role": "Chat platform integrations"
+    },
+    {
+      "path": "daemon",
+      "role": "Daemon and service management"
+    },
+    {
+      "path": "docs",
+      "role": "Guides, architecture context, harness docs, plans"
+    }
+  ],
+  "key_files": [
+    {
+      "path": "cmd/cc-connect/main.go",
+      "role": "Program entrypoint and blank imports for agents/platforms"
+    },
+    {
+      "path": "core/interfaces.go",
+      "role": "Core interfaces for Platform, Agent, AgentSession"
+    },
+    {
+      "path": "core/engine.go",
+      "role": "Message routing, command handling, session orchestration"
+    },
+    {
+      "path": "core/session.go",
+      "role": "Session persistence and lifecycle"
+    },
+    {
+      "path": "config/config.go",
+      "role": "Configuration load, validation, and persistence"
+    }
+  ],
+  "task_types": [
+    "bugfix",
+    "feature",
+    "refactor",
+    "perf",
+    "docs",
+    "analysis"
+  ]
+}
