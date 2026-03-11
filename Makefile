@@ -20,10 +20,13 @@ PLATFORMS := \
   windows/amd64 \
   windows/arm64
 
-.PHONY: build run clean test lint check-harness generate-repo-index release release-all
+.PHONY: build install run clean test lint check-harness generate-repo-index release release-all
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o $(APP) $(CMD)
+
+install:
+	bash scripts/rebuild-daemon-ccc.sh
 
 run: build
 	./$(APP)
