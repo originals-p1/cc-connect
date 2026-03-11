@@ -1233,6 +1233,7 @@ var builtinCommands = []struct {
 	id    string
 }{
 	{[]string{"new"}, "new"},
+	{[]string{"task"}, "task"},
 	{[]string{"list", "sessions"}, "list"},
 	{[]string{"switch"}, "switch"},
 	{[]string{"name", "rename"}, "name"},
@@ -1333,6 +1334,8 @@ func (e *Engine) handleCommand(p Platform, msg *Message, raw string) bool {
 	switch cmdID {
 	case "new":
 		e.cmdNew(p, msg, args)
+	case "task":
+		e.cmdTask(p, msg, args)
 	case "list":
 		e.cmdList(p, msg, args)
 	case "switch":
@@ -1426,6 +1429,42 @@ func (e *Engine) cmdNew(p Platform, msg *Message, args []string) {
 		e.reply(p, msg.ReplyCtx, e.i18n.T(MsgNewSessionCreated))
 	}
 	_ = s
+}
+
+func buildTaskPrompt(requirement string) string {
+	return strings.Join([]string{
+		"Follow the project conventions and repository workflow.",
+		"Complete the requested work.",
+		"Avoid unnecessary questions.",
+		"",
+		"User requirement:",
+		requirement,
+	}, "\n")
+}
+
+func (e *Engine) cmdTask(p Platform, msg *Message, args []string) {
+	requirement := strings.TrimSpace(strings.Join(args, " "))
+	if requirement == "" {
+		e.reply(p, msg.ReplyCtx, e.i18n.T(MsgTaskUsage))
+		return
+	}
+
+	taskMsg := *msg
+	taskMsg.Content = buildTaskPrompt(requirement)
+
+	session := e.sessions.GetOrCreateActive(msg.SessionKey)
+	if !session.TryLock() {
+		e.reply(p, msg.ReplyCtx, e.i18n.T(MsgPreviousProcessing))
+		return
+	}
+
+	slog.Info("processing task command",
+		"platform", msg.Platform,
+		"user", msg.UserName,
+		"session", session.ID,
+	)
+
+	go e.processInteractiveMessage(p, &taskMsg, session)
 }
 
 const listPageSize = 20

@@ -335,8 +335,10 @@ const (
 	MsgSearchNoResult MsgKey = "search_no_result"
 	MsgSearchResult   MsgKey = "search_result"
 	MsgSearchHint     MsgKey = "search_hint"
+	MsgTaskUsage      MsgKey = "task_usage"
 
 	MsgBuiltinCmdNew      MsgKey = "new"
+	MsgBuiltinCmdTask     MsgKey = "task"
 	MsgBuiltinCmdList     MsgKey = "list"
 	MsgBuiltinCmdSearch   MsgKey = "search"
 	MsgBuiltinCmdSwitch   MsgKey = "switch"
@@ -587,6 +589,7 @@ var messages = map[MsgKey]map[Language]string{
 	MsgHelp: {
 		LangEnglish: "📖 Available Commands\n\n" +
 			"/new [name]\n  Start a new session\n\n" +
+			"/task <requirement>\n  Start a guided task for the current AI\n\n" +
 			"/list\n  List agent sessions\n\n" +
 			"/search <keyword>\n  Search sessions by name or ID\n\n" +
 			"/switch <number>\n  Resume a session by its list number\n\n" +
@@ -624,6 +627,7 @@ var messages = map[MsgKey]map[Language]string{
 			"Permission modes: default / edit / plan / yolo",
 		LangChinese: "📖 可用命令\n\n" +
 			"/new [名称]\n  创建新会话\n\n" +
+			"/task <需求>\n  向当前 AI 发起一个受约束任务\n\n" +
 			"/list\n  列出 Agent 会话列表\n\n" +
 			"/search <关键词>\n  搜索会话名称或 ID\n\n" +
 			"/switch <序号>\n  按列表序号切换会话\n\n" +
@@ -661,6 +665,7 @@ var messages = map[MsgKey]map[Language]string{
 			"权限模式：default / edit / plan / yolo",
 		LangTraditionalChinese: "📖 可用命令\n\n" +
 			"/new [名稱]\n  建立新會話\n\n" +
+			"/task <需求>\n  向目前 AI 發起一個受約束任務\n\n" +
 			"/list\n  列出 Agent 會話列表\n\n" +
 			"/search <關鍵詞>\n  搜尋會話名稱或 ID\n\n" +
 			"/switch <序號>\n  按列表序號切換會話\n\n" +
@@ -698,6 +703,7 @@ var messages = map[MsgKey]map[Language]string{
 			"權限模式：default / edit / plan / yolo",
 		LangJapanese: "📖 利用可能なコマンド\n\n" +
 			"/new [名前]\n  新しいセッションを開始\n\n" +
+			"/task <要件>\n  現在の AI に制約付きタスクを開始\n\n" +
 			"/list\n  エージェントセッション一覧\n\n" +
 			"/switch <番号>\n  リスト番号でセッションを切り替え\n\n" +
 			"/delete <番号>\n  リスト番号でセッションを削除\n\n" +
@@ -734,6 +740,7 @@ var messages = map[MsgKey]map[Language]string{
 			"権限モード: default / edit / plan / yolo",
 		LangSpanish: "📖 Comandos disponibles\n\n" +
 			"/new [nombre]\n  Iniciar una nueva sesión\n\n" +
+			"/task <requisito>\n  Iniciar una tarea guiada para la IA actual\n\n" +
 			"/list\n  Listar sesiones del agente\n\n" +
 			"/switch <número>\n  Reanudar sesión por su número en la lista\n\n" +
 			"/delete <número>\n  Eliminar sesión por su número en la lista\n\n" +
@@ -1945,6 +1952,13 @@ var messages = map[MsgKey]map[Language]string{
 		LangJapanese:           "/switch <id> でセッションを切り替え。",
 		LangSpanish:            "Usa /switch <id> para cambiar a una sesión.",
 	},
+	MsgTaskUsage: {
+		LangEnglish:            "Usage: /task <requirement>",
+		LangChinese:            "用法: /task <需求>",
+		LangTraditionalChinese: "用法: /task <需求>",
+		LangJapanese:           "使い方: /task <要件>",
+		LangSpanish:            "Uso: /task <requisito>",
+	},
 	// Builtin command descriptions
 	MsgBuiltinCmdNew: {
 		LangEnglish:            "Start a new session, arg: [name]",
@@ -1952,6 +1966,13 @@ var messages = map[MsgKey]map[Language]string{
 		LangTraditionalChinese: "建立新會話，參數: [名稱]",
 		LangJapanese:           "新しいセッションを開始、引数: [名前]",
 		LangSpanish:            "Iniciar una nueva sesión, arg: [nombre]",
+	},
+	MsgBuiltinCmdTask: {
+		LangEnglish:            "Start a guided task for the current AI, arg: <requirement>",
+		LangChinese:            "向当前 AI 发起一个受约束任务，参数: <需求>",
+		LangTraditionalChinese: "向目前 AI 發起一個受約束任務，參數: <需求>",
+		LangJapanese:           "現在の AI に制約付きタスクを開始、引数: <要件>",
+		LangSpanish:            "Iniciar una tarea guiada para la IA actual, arg: <requisito>",
 	},
 	MsgBuiltinCmdList: {
 		LangEnglish:            "List agent sessions",

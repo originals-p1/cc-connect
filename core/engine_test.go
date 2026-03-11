@@ -2,7 +2,9 @@ package core
 
 import (
 	"context"
+	"strings"
 	"testing"
+	"time"
 )
 
 // --- stubs for Engine tests ---
@@ -84,6 +86,42 @@ func newTestEngine() *Engine {
 func newTestEngineWithAgent(agent Agent) *Engine {
 	return NewEngine("test", agent, []Platform{&stubPlatformEngine{n: "test"}}, "", LangEnglish)
 }
+
+type taskStubAgent struct {
+	session *taskStubSession
+}
+
+func newTaskStubAgent() *taskStubAgent {
+	return &taskStubAgent{
+		session: &taskStubSession{
+			events:     make(chan Event, 1),
+			sendCalled: make(chan string, 1),
+		},
+	}
+}
+
+func (a *taskStubAgent) Name() string { return "task-stub" }
+func (a *taskStubAgent) StartSession(_ context.Context, _ string) (AgentSession, error) {
+	return a.session, nil
+}
+func (a *taskStubAgent) ListSessions(_ context.Context) ([]AgentSessionInfo, error) { return nil, nil }
+func (a *taskStubAgent) Stop() error                                                { return nil }
+
+type taskStubSession struct {
+	events     chan Event
+	sendCalled chan string
+}
+
+func (s *taskStubSession) Send(prompt string, _ []ImageAttachment) error {
+	s.sendCalled <- prompt
+	s.events <- Event{Type: EventResult, Content: "ok", SessionID: "task-session"}
+	return nil
+}
+func (s *taskStubSession) RespondPermission(_ string, _ PermissionResult) error { return nil }
+func (s *taskStubSession) Events() <-chan Event                                 { return s.events }
+func (s *taskStubSession) CurrentSessionID() string                             { return "task-session" }
+func (s *taskStubSession) Alive() bool                                          { return true }
+func (s *taskStubSession) Close() error                                         { return nil }
 
 // --- alias tests ---
 
@@ -229,6 +267,62 @@ func TestCmdClearUnsupportedAgent(t *testing.T) {
 	if p.sent[len(p.sent)-1] != want {
 		t.Fatalf("reply = %q, want %q", p.sent[len(p.sent)-1], want)
 	}
+}
+
+func TestCmdTaskBuildsNormalizedPrompt(t *testing.T) {
+	agent := newTaskStubAgent()
+	e := newTestEngineWithAgent(agent)
+	p := &stubPlatformEngine{n: "test"}
+	msg := &Message{SessionKey: "test:user1", ReplyCtx: "ctx", Content: "/task 修复登录问题"}
+
+	e.HandleIncomingMessage(p, msg)
+
+	select {
+	case prompt := <-agent.session.sendCalled:
+		if prompt == msg.Content {
+			t.Fatal("expected /task to normalize the prompt before sending to the agent")
+		}
+		for _, want := range []string{
+			"Follow the project conventions and repository workflow.",
+			"Complete the requested work.",
+			"Avoid unnecessary questions.",
+			"User requirement:",
+			"修复登录问题",
+		} {
+			if !contains(prompt, want) {
+				t.Fatalf("normalized prompt missing %q:\n%s", want, prompt)
+			}
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for /task to reach the agent session")
+	}
+}
+
+func TestCmdTaskRequiresBody(t *testing.T) {
+	agent := newTaskStubAgent()
+	e := newTestEngineWithAgent(agent)
+	p := &stubPlatformEngine{n: "test"}
+	msg := &Message{SessionKey: "test:user1", ReplyCtx: "ctx", Content: "/task"}
+
+	e.HandleIncomingMessage(p, msg)
+
+	select {
+	case prompt := <-agent.session.sendCalled:
+		t.Fatalf("unexpected prompt sent to agent: %q", prompt)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	if len(p.sent) == 0 {
+		t.Fatal("expected /task usage reply")
+	}
+	want := "Usage: /task <requirement>"
+	if p.sent[len(p.sent)-1] != want {
+		t.Fatalf("reply = %q, want %q", p.sent[len(p.sent)-1], want)
+	}
+}
+
+func contains(s, sub string) bool {
+	return len(sub) == 0 || strings.Contains(s, sub)
 }
 
 // --- quiet tests ---
