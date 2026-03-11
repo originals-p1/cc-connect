@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"flag"
@@ -607,6 +608,8 @@ func startBotMode(cfg *config.Config) (func(), error) {
 
 	var platforms []core.Platform
 	var runtimeManagers []*core.BotRuntimeManager
+	lastActiveSessions := core.NewLastActiveSessionStore(filepath.Join(cfg.DataDir, "bot_last_active_sessions.json"))
+	botPlatforms := make(map[string][]core.Platform)
 
 	for _, bot := range cfg.Bots {
 		bot := bot
@@ -624,7 +627,8 @@ func startBotMode(cfg *config.Config) (func(), error) {
 			RefreshCatalog: func() (*core.ProjectCatalog, error) {
 				return core.ScanWorkspace(cfg.Workspace.Root, requireGit)
 			},
-			Bindings:       bindings,
+			Bindings:           bindings,
+			LastActiveSessions: lastActiveSessions,
 		}
 		if bot.DefaultProject != "" {
 			if _, ok := catalog.Projects[bot.DefaultProject]; !ok {
@@ -661,10 +665,12 @@ func startBotMode(cfg *config.Config) (func(), error) {
 				slog.Error("platform command registration failed", "bot", bot.Name, "platform", p.Name(), "error", err)
 			}
 			platforms = append(platforms, p)
+			botPlatforms[bot.Name] = append(botPlatforms[bot.Name], p)
 		}
 	}
 
 	slog.Info("cc-connect is running in bot mode", "bots", len(cfg.Bots), "projects", len(catalog.Projects))
+	sendBotModeStartupNotifications(cfg, botPlatforms, lastActiveSessions)
 	return func() {
 		for _, p := range platforms {
 			if err := p.Stop(); err != nil {
@@ -677,6 +683,43 @@ func startBotMode(cfg *config.Config) (func(), error) {
 			}
 		}
 	}, nil
+}
+
+func sendBotModeStartupNotifications(cfg *config.Config, botPlatforms map[string][]core.Platform, sessions *core.LastActiveSessionStore) {
+	if sessions == nil {
+		return
+	}
+	i18n := core.NewI18n(parseLanguage(cfg.Language))
+	text := i18n.T(core.MsgStartedSuccess)
+	if core.CurrentVersion != "" {
+		text += fmt.Sprintf(" (%s)", core.CurrentVersion)
+	}
+
+	for botID, platforms := range botPlatforms {
+		rec, ok := sessions.Get(botID)
+		if !ok {
+			continue
+		}
+		for _, p := range platforms {
+			if p.Name() != rec.Platform {
+				continue
+			}
+			rc, ok := p.(core.ReplyContextReconstructor)
+			if !ok {
+				slog.Debug("bot mode startup notify: platform does not support ReconstructReplyCtx", "bot", botID, "platform", p.Name())
+				break
+			}
+			replyCtx, err := rc.ReconstructReplyCtx(rec.SessionKey)
+			if err != nil {
+				slog.Debug("bot mode startup notify: reconstruct failed", "bot", botID, "platform", p.Name(), "error", err)
+				break
+			}
+			if err := p.Send(context.Background(), replyCtx, text); err != nil {
+				slog.Debug("bot mode startup notify: send failed", "bot", botID, "platform", p.Name(), "error", err)
+			}
+			break
+		}
+	}
 }
 
 func registerBotModeCommands(p core.Platform, router *core.BotRouter, runtimeMgr *core.BotRuntimeManager) error {

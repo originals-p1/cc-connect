@@ -15,6 +15,7 @@ type BotRouter struct {
 	Catalog        *ProjectCatalog
 	RefreshCatalog func() (*ProjectCatalog, error)
 	Bindings       *BindingStore
+	LastActiveSessions *LastActiveSessionStore
 	Runtimes       *BotRuntimeManager
 	ProjectKey     func(*Message) BindingKey
 }
@@ -23,6 +24,9 @@ func (r *BotRouter) HandleMessage(p Platform, msg *Message) {
 	if r.DMOnly && !msg.IsDM {
 		_ = p.Reply(context.Background(), msg.ReplyCtx, "Project switching is only available in direct messages.")
 		return
+	}
+	if r.LastActiveSessions != nil {
+		r.LastActiveSessions.Set(r.BotID, msg.Platform, msg.SessionKey)
 	}
 
 	trimmed := strings.TrimSpace(msg.Content)

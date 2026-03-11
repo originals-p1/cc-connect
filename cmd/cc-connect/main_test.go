@@ -31,6 +31,7 @@ func (s *smokeAgentSession) Close() error                                       
 type smokePlatform struct {
 	handler            core.MessageHandler
 	sent               []string
+	sentReplyCtx       []any
 	registeredCommands []core.BotCommandInfo
 }
 
@@ -43,11 +44,18 @@ func (p *smokePlatform) Reply(_ context.Context, _ any, content string) error {
 	p.sent = append(p.sent, content)
 	return nil
 }
-func (p *smokePlatform) Send(context.Context, any, string) error { return nil }
-func (p *smokePlatform) Stop() error                             { return nil }
+func (p *smokePlatform) Send(_ context.Context, replyCtx any, content string) error {
+	p.sent = append(p.sent, content)
+	p.sentReplyCtx = append(p.sentReplyCtx, replyCtx)
+	return nil
+}
+func (p *smokePlatform) Stop() error { return nil }
 func (p *smokePlatform) RegisterCommands(commands []core.BotCommandInfo) error {
 	p.registeredCommands = append([]core.BotCommandInfo(nil), commands...)
 	return nil
+}
+func (p *smokePlatform) ReconstructReplyCtx(sessionKey string) (any, error) {
+	return "reply:" + sessionKey, nil
 }
 
 var lastSmokePlatform *smokePlatform
@@ -137,5 +145,51 @@ func TestStartBotModeRegistersPlatformCommands(t *testing.T) {
 	}
 	if len(lastSmokePlatform.registeredCommands) == 0 {
 		t.Fatal("expected bot mode to register platform commands")
+	}
+}
+
+func TestStartBotModeSendsStartupNotificationToLastActiveSession(t *testing.T) {
+	workspace := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(workspace, "repo-a", ".git"), 0o755); err != nil {
+		t.Fatalf("mkdir repo: %v", err)
+	}
+
+	dataDir := filepath.Join(t.TempDir(), "data")
+	store := core.NewLastActiveSessionStore(filepath.Join(dataDir, "bot_last_active_sessions.json"))
+	store.Set("smoke-bot", "smoke-platform", "smoke-platform:chat-1:user-1")
+
+	cfg := &config.Config{
+		DataDir: dataDir,
+		Language: "zh",
+		Workspace: config.WorkspaceConfig{
+			Root: workspace,
+		},
+		Bots: []config.BotConfig{{
+			Name:      "smoke-bot",
+			AgentType: "smoke-agent",
+			Platforms: []config.PlatformConfig{{
+				Type:    "smoke-platform",
+				Options: map[string]any{},
+			}},
+		}},
+	}
+
+	cleanup, err := startBotMode(cfg)
+	if err != nil {
+		t.Fatalf("startBotMode() error = %v", err)
+	}
+	defer cleanup()
+
+	if lastSmokePlatform == nil {
+		t.Fatal("expected smoke platform to be created")
+	}
+	if len(lastSmokePlatform.sent) == 0 {
+		t.Fatal("expected startup notification to be sent")
+	}
+	if got := lastSmokePlatform.sent[len(lastSmokePlatform.sent)-1]; got != "✅ ccc 已启动。" {
+		t.Fatalf("startup notification = %q, want startup success message", got)
+	}
+	if len(lastSmokePlatform.sentReplyCtx) == 0 || lastSmokePlatform.sentReplyCtx[len(lastSmokePlatform.sentReplyCtx)-1] != "reply:smoke-platform:chat-1:user-1" {
+		t.Fatalf("reply ctx = %v, want reconstructed last-active session", lastSmokePlatform.sentReplyCtx)
 	}
 }

@@ -290,3 +290,40 @@ func TestBotRouterUsesDefaultProject(t *testing.T) {
 		t.Fatalf("sent = %v, want no router-level error reply", p.sent)
 	}
 }
+
+func TestBotRouterRecordsLastActiveSession(t *testing.T) {
+	p := &plainBotPlatform{n: "test"}
+	store := NewLastActiveSessionStore("")
+	router := &BotRouter{
+		BotID:              "bot-a",
+		DefaultProject:     "repo-a",
+		DMOnly:             true,
+		Catalog:            testCatalog(),
+		Bindings:           NewBindingStore(""),
+		LastActiveSessions: store,
+		Runtimes: NewBotRuntimeManager(testCatalog(), 2, func(botID string, proj ProjectInfo) (*ProjectRuntime, error) {
+			return &ProjectRuntime{
+				BotID:     botID,
+				Project:   proj,
+				Engine:    newTestEngine(),
+				CloseFunc: func() error { return nil },
+			}, nil
+		}),
+	}
+
+	router.HandleMessage(p, &Message{
+		Platform:   "telegram",
+		SessionKey: "telegram:chat-1:user-1",
+		UserID:     "u1",
+		IsDM:       true,
+		Content:    "hello",
+	})
+
+	rec, ok := store.Get("bot-a")
+	if !ok {
+		t.Fatal("expected last active session to be recorded")
+	}
+	if rec.Platform != "telegram" || rec.SessionKey != "telegram:chat-1:user-1" {
+		t.Fatalf("record = %+v, want telegram session", rec)
+	}
+}
