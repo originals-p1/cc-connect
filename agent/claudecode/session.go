@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -134,10 +135,31 @@ func (cs *claudeSession) readLoop(stdout io.ReadCloser, stderrBuf *bytes.Buffer)
 		close(cs.done)
 	}()
 
-	scanner := core.NewLineScanner(stdout)
+	reader := core.NewAgentLineReader(stdout)
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	for {
+		line, err := reader.ReadLine()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			if errors.Is(err, core.ErrAgentLineSoftLimit) {
+				evt := core.Event{Type: core.EventError, Error: core.ErrAutoCompressNeeded}
+				select {
+				case cs.events <- evt:
+				case <-cs.ctx.Done():
+				}
+				continue
+			}
+			slog.Error("claudeSession: line reader error", "error", err)
+			evt := core.Event{Type: core.EventError, Error: fmt.Errorf("read stdout: %w", err)}
+			select {
+			case cs.events <- evt:
+			case <-cs.ctx.Done():
+				return
+			}
+			return
+		}
 		if line == "" {
 			continue
 		}
@@ -168,15 +190,6 @@ func (cs *claudeSession) readLoop(stdout io.ReadCloser, stderrBuf *bytes.Buffer)
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		slog.Error("claudeSession: scanner error", "error", err)
-		evt := core.Event{Type: core.EventError, Error: fmt.Errorf("read stdout: %w", err)}
-		select {
-		case cs.events <- evt:
-		case <-cs.ctx.Done():
-			return
-		}
-	}
 }
 
 func (cs *claudeSession) handleSystem(raw map[string]any) {

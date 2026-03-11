@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -140,10 +141,30 @@ func (cs *codexSession) readLoop(cmd *exec.Cmd, stdout io.ReadCloser, stderrBuf 
 		}
 	}()
 
-	scanner := core.NewLineScanner(stdout)
+	reader := core.NewAgentLineReader(stdout)
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	for {
+		line, err := reader.ReadLine()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			if errors.Is(err, core.ErrAgentLineSoftLimit) {
+				evt := core.Event{Type: core.EventError, Error: core.ErrAutoCompressNeeded}
+				select {
+				case cs.events <- evt:
+				case <-cs.ctx.Done():
+				}
+				return
+			}
+			slog.Error("codexSession: line reader error", "error", err)
+			evt := core.Event{Type: core.EventError, Error: fmt.Errorf("read stdout: %w", err)}
+			select {
+			case cs.events <- evt:
+			case <-cs.ctx.Done():
+			}
+			return
+		}
 		if line == "" {
 			continue
 		}
@@ -157,16 +178,6 @@ func (cs *codexSession) readLoop(cmd *exec.Cmd, stdout io.ReadCloser, stderrBuf 
 		}
 
 		cs.handleEvent(raw)
-	}
-
-	if err := scanner.Err(); err != nil {
-		slog.Error("codexSession: scanner error", "error", err)
-		evt := core.Event{Type: core.EventError, Error: fmt.Errorf("read stdout: %w", err)}
-		select {
-		case cs.events <- evt:
-		case <-cs.ctx.Done():
-			return
-		}
 	}
 }
 

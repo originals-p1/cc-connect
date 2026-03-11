@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -31,6 +32,13 @@ const (
 	slowAgentClose      = 3 * time.Second  // agentSession.Close
 	slowAgentSend       = 2 * time.Second  // agentSession.Send
 	slowAgentFirstEvent = 15 * time.Second // time from send to first agent event
+)
+
+type interactiveTurnResult int
+
+const (
+	interactiveTurnDone interactiveTurnResult = iota
+	interactiveTurnRetryAfterCompress
 )
 
 // VersionInfo is set by main at startup so that /version works.
@@ -794,8 +802,6 @@ func (e *Engine) processInteractiveMessage(p Platform, msg *Message, session *Se
 		return
 	}
 
-	turnStart := time.Now()
-
 	e.i18n.DetectAndSet(msg.Content)
 	session.AddHistory("user", msg.Content)
 
@@ -823,42 +829,50 @@ func (e *Engine) processInteractiveMessage(p Platform, msg *Message, session *Se
 		}
 	}()
 
-	// Drain any stale events left in the channel from a previous turn.
-	// This prevents the next processInteractiveEvents from reading an old
-	// EventResult that was pushed after the previous turn already returned.
-	drainEvents(state.agentSession.Events())
+	retryAllowed := true
+	for {
+		turnStart := time.Now()
 
-	sendStart := time.Now()
-	state.mu.Lock()
-	state.fromVoice = msg.FromVoice
-	state.mu.Unlock()
-	if err := state.agentSession.Send(msg.Content, msg.Images); err != nil {
-		slog.Error("failed to send prompt", "error", err)
+		// Drain any stale events left in the channel from a previous turn.
+		// This prevents the next processInteractiveEvents from reading an old
+		// EventResult that was pushed after the previous turn already returned.
+		drainEvents(state.agentSession.Events())
 
-		if !state.agentSession.Alive() {
-			e.cleanupInteractiveState(msg.SessionKey)
-			e.send(p, msg.ReplyCtx, e.i18n.T(MsgSessionRestarting))
+		sendStart := time.Now()
+		state.mu.Lock()
+		state.fromVoice = msg.FromVoice
+		state.mu.Unlock()
+		if err := state.agentSession.Send(msg.Content, msg.Images); err != nil {
+			slog.Error("failed to send prompt", "error", err)
 
-			state = e.getOrCreateInteractiveState(msg.SessionKey, p, msg.ReplyCtx, session)
-			if state.agentSession == nil {
-				e.reply(p, msg.ReplyCtx, fmt.Sprintf(e.i18n.T(MsgError), "failed to restart agent session"))
-				return
-			}
-			sendStart = time.Now()
-			if err := state.agentSession.Send(msg.Content, msg.Images); err != nil {
+			if !state.agentSession.Alive() {
+				e.cleanupInteractiveState(msg.SessionKey)
+				e.send(p, msg.ReplyCtx, e.i18n.T(MsgSessionRestarting))
+
+				state = e.getOrCreateInteractiveState(msg.SessionKey, p, msg.ReplyCtx, session)
+				if state.agentSession == nil {
+					e.reply(p, msg.ReplyCtx, fmt.Sprintf(e.i18n.T(MsgError), "failed to restart agent session"))
+					return
+				}
+				sendStart = time.Now()
+				if err := state.agentSession.Send(msg.Content, msg.Images); err != nil {
+					e.reply(p, msg.ReplyCtx, fmt.Sprintf(e.i18n.T(MsgError), err))
+					return
+				}
+			} else {
 				e.reply(p, msg.ReplyCtx, fmt.Sprintf(e.i18n.T(MsgError), err))
 				return
 			}
-		} else {
-			e.reply(p, msg.ReplyCtx, fmt.Sprintf(e.i18n.T(MsgError), err))
+		}
+		if elapsed := time.Since(sendStart); elapsed >= slowAgentSend {
+			slog.Warn("slow agent send", "elapsed", elapsed, "session", msg.SessionKey, "content_len", len(msg.Content))
+		}
+
+		if e.processInteractiveEvents(state, session, msg.SessionKey, msg.MessageID, turnStart, retryAllowed) != interactiveTurnRetryAfterCompress {
 			return
 		}
+		retryAllowed = false
 	}
-	if elapsed := time.Since(sendStart); elapsed >= slowAgentSend {
-		slog.Warn("slow agent send", "elapsed", elapsed, "session", msg.SessionKey, "content_len", len(msg.Content))
-	}
-
-	e.processInteractiveEvents(state, session, msg.SessionKey, msg.MessageID, turnStart)
 }
 
 func (e *Engine) getOrCreateInteractiveState(sessionKey string, p Platform, replyCtx any, session *Session) *interactiveState {
@@ -957,7 +971,7 @@ func (e *Engine) cleanupInteractiveState(sessionKey string) {
 
 const defaultEventIdleTimeout = 2 * time.Hour
 
-func (e *Engine) processInteractiveEvents(state *interactiveState, session *Session, sessionKey string, msgID string, turnStart time.Time) {
+func (e *Engine) processInteractiveEvents(state *interactiveState, session *Session, sessionKey string, msgID string, turnStart time.Time, retryAllowed bool) interactiveTurnResult {
 	var textParts []string
 	toolCount := 0
 	waitStart := time.Now()
@@ -996,9 +1010,9 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 			state.mu.Unlock()
 			e.send(p, replyCtx, fmt.Sprintf(e.i18n.T(MsgError), "agent session timed out (no response)"))
 			e.cleanupInteractiveState(sessionKey)
-			return
+			return interactiveTurnDone
 		case <-e.ctx.Done():
-			return
+			return interactiveTurnDone
 		}
 
 		// Reset idle timer after receiving an event
@@ -1167,13 +1181,13 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 				slog.Debug("EventResult: finalized via stream preview", "response_len", len(fullResponse))
 			} else {
 				slog.Debug("EventResult: sending via p.Send (preview inactive or failed)", "response_len", len(fullResponse), "chunks", len(splitMessage(fullResponse, maxPlatformMessageLen)))
-				for _, chunk := range splitMessage(fullResponse, maxPlatformMessageLen) {
-					if err := p.Send(e.ctx, replyCtx, chunk); err != nil {
-						slog.Error("failed to send reply", "error", err, "msg_id", msgID)
-						return
+					for _, chunk := range splitMessage(fullResponse, maxPlatformMessageLen) {
+						if err := p.Send(e.ctx, replyCtx, chunk); err != nil {
+							slog.Error("failed to send reply", "error", err, "msg_id", msgID)
+							return interactiveTurnDone
+						}
 					}
 				}
-			}
 
 			if elapsed := time.Since(replyStart); elapsed >= slowPlatformSend {
 				slog.Warn("slow final reply send", "platform", p.Name(), "elapsed", elapsed, "response_len", len(fullResponse))
@@ -1190,15 +1204,26 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 				}
 			}
 
-			return
+			return interactiveTurnDone
 
 		case EventError:
 			sp.finish("") // clean up preview on error
+			if errors.Is(event.Error, ErrAutoCompressNeeded) {
+				if !retryAllowed {
+					e.send(p, replyCtx, fmt.Sprintf(e.i18n.T(MsgError), "automatic compression did not recover the turn"))
+					return interactiveTurnDone
+				}
+				if err := e.runAutoCompress(state, sessionKey, p, replyCtx); err != nil {
+					e.send(p, replyCtx, fmt.Sprintf(e.i18n.T(MsgError), err))
+					return interactiveTurnDone
+				}
+				return interactiveTurnRetryAfterCompress
+			}
 			if event.Error != nil {
 				slog.Error("agent error", "error", event.Error)
 				e.send(p, replyCtx, fmt.Sprintf(e.i18n.T(MsgError), event.Error))
 			}
-			return
+			return interactiveTurnDone
 		}
 	}
 
@@ -1224,6 +1249,8 @@ channelClosed:
 			}
 		}
 	}
+
+	return interactiveTurnDone
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -2818,6 +2845,85 @@ func (e *Engine) processCompressEvents(state *interactiveState, sessionKey strin
 				e.reply(p, replyCtx, fmt.Sprintf(e.i18n.T(MsgError), event.Error))
 			}
 			return
+		case EventPermissionRequest:
+			_ = state.agentSession.RespondPermission(event.RequestID, PermissionResult{
+				Behavior:     "allow",
+				UpdatedInput: event.ToolInputRaw,
+			})
+		}
+	}
+}
+
+func (e *Engine) runAutoCompress(state *interactiveState, sessionKey string, p Platform, replyCtx any) error {
+	compressor, ok := e.agent.(ContextCompressor)
+	if !ok || compressor.CompressCommand() == "" {
+		return fmt.Errorf("automatic compression requested but this agent does not support context compression")
+	}
+
+	state.mu.Lock()
+	state.platform = p
+	state.replyCtx = replyCtx
+	state.mu.Unlock()
+
+	drainEvents(state.agentSession.Events())
+	e.send(p, replyCtx, e.i18n.T(MsgCompressing))
+
+	if err := state.agentSession.Send(compressor.CompressCommand(), nil); err != nil {
+		if !state.agentSession.Alive() {
+			e.cleanupInteractiveState(sessionKey)
+		}
+		return err
+	}
+
+	return e.waitForCompression(state, sessionKey)
+}
+
+func (e *Engine) waitForCompression(state *interactiveState, sessionKey string) error {
+	events := state.agentSession.Events()
+
+	var idleTimer *time.Timer
+	var idleCh <-chan time.Time
+	if e.eventIdleTimeout > 0 {
+		idleTimer = time.NewTimer(e.eventIdleTimeout)
+		defer idleTimer.Stop()
+		idleCh = idleTimer.C
+	}
+
+	for {
+		var event Event
+		var ok bool
+
+		select {
+		case event, ok = <-events:
+			if !ok {
+				e.cleanupInteractiveState(sessionKey)
+				return nil
+			}
+		case <-idleCh:
+			e.cleanupInteractiveState(sessionKey)
+			return fmt.Errorf("compress timed out")
+		case <-e.ctx.Done():
+			return e.ctx.Err()
+		}
+
+		if idleTimer != nil {
+			if !idleTimer.Stop() {
+				select {
+				case <-idleTimer.C:
+				default:
+				}
+			}
+			idleTimer.Reset(e.eventIdleTimeout)
+		}
+
+		switch event.Type {
+		case EventResult:
+			return nil
+		case EventError:
+			if event.Error != nil {
+				return event.Error
+			}
+			return fmt.Errorf("compression failed")
 		case EventPermissionRequest:
 			_ = state.agentSession.RespondPermission(event.RequestID, PermissionResult{
 				Behavior:     "allow",

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -56,6 +57,54 @@ func (s *stubAgentSession) Events() <-chan Event                                
 func (s *stubAgentSession) CurrentSessionID() string                             { return "stub-session" }
 func (s *stubAgentSession) Alive() bool                                          { return true }
 func (s *stubAgentSession) Close() error                                         { return nil }
+
+type autoCompressAgent struct {
+	session         *autoCompressSession
+	compressCommand string
+}
+
+func (a *autoCompressAgent) Name() string { return "auto-compress-stub" }
+func (a *autoCompressAgent) StartSession(_ context.Context, _ string) (AgentSession, error) {
+	return a.session, nil
+}
+func (a *autoCompressAgent) ListSessions(_ context.Context) ([]AgentSessionInfo, error) {
+	return nil, nil
+}
+func (a *autoCompressAgent) Stop() error { return nil }
+func (a *autoCompressAgent) CompressCommand() string {
+	return a.compressCommand
+}
+
+type autoCompressSession struct {
+	events   chan Event
+	sendErrs map[string]error
+	sends    []string
+	handler  func(prompt string) []Event
+}
+
+func newAutoCompressSession(handler func(prompt string) []Event) *autoCompressSession {
+	return &autoCompressSession{
+		events:   make(chan Event, 16),
+		sendErrs: make(map[string]error),
+		handler:  handler,
+	}
+}
+
+func (s *autoCompressSession) Send(prompt string, _ []ImageAttachment) error {
+	s.sends = append(s.sends, prompt)
+	if err := s.sendErrs[prompt]; err != nil {
+		return err
+	}
+	for _, evt := range s.handler(prompt) {
+		s.events <- evt
+	}
+	return nil
+}
+func (s *autoCompressSession) RespondPermission(_ string, _ PermissionResult) error { return nil }
+func (s *autoCompressSession) Events() <-chan Event                                 { return s.events }
+func (s *autoCompressSession) CurrentSessionID() string                             { return "compress-session" }
+func (s *autoCompressSession) Alive() bool                                          { return true }
+func (s *autoCompressSession) Close() error                                         { return nil }
 
 type stubPlatformEngine struct {
 	n            string
@@ -210,6 +259,70 @@ func newTestEngine() *Engine {
 
 func newTestEngineWithAgent(agent Agent) *Engine {
 	return NewEngine("test", agent, []Platform{&stubPlatformEngine{n: "test"}}, "", LangEnglish)
+}
+
+func TestProcessInteractiveMessageAutoCompressesAndRetriesOnce(t *testing.T) {
+	attempts := 0
+	sessionStub := newAutoCompressSession(func(prompt string) []Event {
+		switch prompt {
+		case "hello":
+			attempts++
+			if attempts == 1 {
+				return []Event{{Type: EventError, Error: ErrAutoCompressNeeded}}
+			}
+			return []Event{{Type: EventResult, Content: "retried ok", SessionID: "compress-session"}}
+		case "/compress":
+			return []Event{{Type: EventResult}}
+		default:
+			return nil
+		}
+	})
+	agent := &autoCompressAgent{session: sessionStub, compressCommand: "/compress"}
+	engine := newTestEngineWithAgent(agent)
+	platform := &stubPlatformEngine{n: "test"}
+	msg := &Message{SessionKey: "s1", Content: "hello", ReplyCtx: "ctx"}
+	session := engine.sessions.GetOrCreateActive(msg.SessionKey)
+
+	engine.processInteractiveMessage(platform, msg, session)
+
+	wantSends := []string{"hello", "/compress", "hello"}
+	if !slices.Equal(sessionStub.sends, wantSends) {
+		t.Fatalf("session sends = %v, want %v", sessionStub.sends, wantSends)
+	}
+	if len(platform.sent) == 0 || platform.sent[len(platform.sent)-1] != "retried ok" {
+		t.Fatalf("platform sent = %v, want final retried response", platform.sent)
+	}
+}
+
+func TestProcessInteractiveMessageStopsAfterSingleAutoCompressRetry(t *testing.T) {
+	sessionStub := newAutoCompressSession(func(prompt string) []Event {
+		switch prompt {
+		case "hello":
+			return []Event{{Type: EventError, Error: ErrAutoCompressNeeded}}
+		case "/compress":
+			return []Event{{Type: EventResult}}
+		default:
+			return []Event{{Type: EventError, Error: ErrAutoCompressNeeded}}
+		}
+	})
+	agent := &autoCompressAgent{session: sessionStub, compressCommand: "/compress"}
+	engine := newTestEngineWithAgent(agent)
+	platform := &stubPlatformEngine{n: "test"}
+	msg := &Message{SessionKey: "s2", Content: "hello", ReplyCtx: "ctx"}
+	session := engine.sessions.GetOrCreateActive(msg.SessionKey)
+
+	engine.processInteractiveMessage(platform, msg, session)
+
+	wantSends := []string{"hello", "/compress", "hello"}
+	if !slices.Equal(sessionStub.sends, wantSends) {
+		t.Fatalf("session sends = %v, want %v", sessionStub.sends, wantSends)
+	}
+	if len(platform.sent) == 0 {
+		t.Fatalf("platform sent no messages")
+	}
+	if !strings.Contains(platform.sent[len(platform.sent)-1], "automatic compression") {
+		t.Fatalf("platform final message = %q, want retry failure notice", platform.sent[len(platform.sent)-1])
+	}
 }
 
 type taskStubAgent struct {
