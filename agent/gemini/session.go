@@ -27,6 +27,7 @@ type geminiSession struct {
 	workDir  string
 	model    string
 	mode     string
+	timeout  time.Duration
 	extraEnv []string
 	events   chan core.Event
 	chatID   atomic.Value // stores string — Gemini session ID
@@ -34,9 +35,11 @@ type geminiSession struct {
 	cancel   context.CancelFunc
 	wg       sync.WaitGroup
 	alive    atomic.Bool
+
+	pendingMsgs []string // buffered assistant messages awaiting classification
 }
 
-func newGeminiSession(ctx context.Context, cmd, workDir, model, mode, resumeID string, extraEnv []string) (*geminiSession, error) {
+func newGeminiSession(ctx context.Context, cmd, workDir, model, mode, resumeID string, extraEnv []string, timeout time.Duration) (*geminiSession, error) {
 	sessionCtx, cancel := context.WithCancel(ctx)
 
 	gs := &geminiSession{
@@ -44,6 +47,7 @@ func newGeminiSession(ctx context.Context, cmd, workDir, model, mode, resumeID s
 		workDir:  workDir,
 		model:    model,
 		mode:     mode,
+		timeout:  timeout,
 		extraEnv: extraEnv,
 		events:   make(chan core.Event, 64),
 		ctx:      sessionCtx,
@@ -58,7 +62,7 @@ func newGeminiSession(ctx context.Context, cmd, workDir, model, mode, resumeID s
 	return gs, nil
 }
 
-func (gs *geminiSession) Send(prompt string, images []core.ImageAttachment) error {
+func (gs *geminiSession) Send(prompt string, images []core.ImageAttachment) (err error) {
 	if !gs.alive.Load() {
 		return fmt.Errorf("session is closed")
 	}
@@ -120,7 +124,24 @@ func (gs *geminiSession) Send(prompt string, images []core.ImageAttachment) erro
 
 	slog.Debug("geminiSession: launching", "resume", isResume, "args", core.RedactArgs(args))
 
-	cmd := exec.CommandContext(gs.ctx, gs.cmd, args...)
+	// Add timeout for each turn to prevent hanging processes
+	var ctx context.Context
+	var cancel context.CancelFunc
+	if gs.timeout > 0 {
+		ctx, cancel = context.WithTimeout(gs.ctx, gs.timeout)
+	} else {
+		ctx, cancel = context.WithCancel(gs.ctx)
+	}
+
+	// ensure cancel is called on early return errors
+	started := false
+	defer func() {
+		if !started {
+			cancel()
+		}
+	}()
+
+	cmd := exec.CommandContext(ctx, gs.cmd, args...)
 	cmd.Dir = gs.workDir
 	env := os.Environ()
 	if len(gs.extraEnv) > 0 {
@@ -140,8 +161,12 @@ func (gs *geminiSession) Send(prompt string, images []core.ImageAttachment) erro
 		return fmt.Errorf("geminiSession: start: %w", err)
 	}
 
+	started = true
 	gs.wg.Add(1)
-	go gs.readLoop(cmd, stdout, &stderrBuf, imageRefs)
+	go func() {
+		defer cancel()
+		gs.readLoop(cmd, stdout, &stderrBuf, imageRefs)
+	}()
 
 	return nil
 }
@@ -175,6 +200,8 @@ func (gs *geminiSession) readLoop(cmd *exec.Cmd, stdout io.ReadCloser, stderrBuf
 		if line == "" {
 			continue
 		}
+
+		slog.Debug("geminiSession: raw", "line", truncate(line, 500))
 
 		var raw map[string]any
 		if err := json.Unmarshal([]byte(line), &raw); err != nil {
@@ -244,25 +271,17 @@ func (gs *geminiSession) handleInit(raw map[string]any) {
 func (gs *geminiSession) handleMessage(raw map[string]any) {
 	role, _ := raw["role"].(string)
 	content, _ := raw["content"].(string)
-	delta, _ := raw["delta"].(bool)
 
-	if role == "user" {
+	if role == "user" || content == "" {
 		return
 	}
 
-	// assistant message (may be delta or full)
-	if content != "" {
-		_ = delta // both delta and full messages are streamed as text events
-		evt := core.Event{Type: core.EventText, Content: content}
-		select {
-		case gs.events <- evt:
-		case <-gs.ctx.Done():
-			return
-		}
-	}
+	gs.pendingMsgs = append(gs.pendingMsgs, content)
 }
 
 func (gs *geminiSession) handleToolUse(raw map[string]any) {
+	gs.flushPendingAsThinking()
+
 	toolName, _ := raw["tool_name"].(string)
 	toolID, _ := raw["tool_id"].(string)
 	params, _ := raw["parameters"].(map[string]any)
@@ -321,6 +340,8 @@ func (gs *geminiSession) handleError(raw map[string]any) {
 }
 
 func (gs *geminiSession) handleResult(raw map[string]any) {
+	gs.flushPendingAsText()
+
 	status, _ := raw["status"].(string)
 
 	var errMsg string
@@ -346,6 +367,36 @@ func (gs *geminiSession) handleResult(raw map[string]any) {
 		case gs.events <- evt:
 		case <-gs.ctx.Done():
 			return
+		}
+	}
+}
+
+func (gs *geminiSession) flushPendingAsThinking() {
+	if len(gs.pendingMsgs) == 0 {
+		return
+	}
+	text := strings.Join(gs.pendingMsgs, "")
+	gs.pendingMsgs = gs.pendingMsgs[:0]
+	if text != "" {
+		evt := core.Event{Type: core.EventThinking, Content: text}
+		select {
+		case gs.events <- evt:
+		case <-gs.ctx.Done():
+		}
+	}
+}
+
+func (gs *geminiSession) flushPendingAsText() {
+	if len(gs.pendingMsgs) == 0 {
+		return
+	}
+	text := strings.Join(gs.pendingMsgs, "")
+	gs.pendingMsgs = gs.pendingMsgs[:0]
+	if text != "" {
+		evt := core.Event{Type: core.EventText, Content: text}
+		select {
+		case gs.events <- evt:
+		case <-gs.ctx.Done():
 		}
 	}
 }
