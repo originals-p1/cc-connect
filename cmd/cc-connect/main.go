@@ -43,6 +43,8 @@ import (
 	_ "github.com/chenhg5/cc-connect/platform/qqbot"
 )
 
+var restartProcessFn = restartProcess
+
 var (
 	version   = "dev"
 	commit    = "none"
@@ -501,13 +503,7 @@ func main() {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
-	var restartReq *core.RestartRequest
-	select {
-	case <-sigCh:
-	case req := <-core.RestartCh:
-		restartReq = &req
-		slog.Info("restart requested via /restart command", "session", req.SessionKey, "platform", req.Platform)
-	}
+	restartReq := waitForShutdownOrRestart(sigCh, core.RestartCh)
 
 	slog.Info("shutting down...")
 	if cronSched != nil {
@@ -526,24 +522,7 @@ func main() {
 	}
 
 	if restartReq != nil {
-		if err := core.SaveRestartNotify(cfg.DataDir, *restartReq); err != nil {
-			slog.Error("restart: save notify failed", "error", err)
-		}
-		execPath, err := os.Executable()
-		if err != nil {
-			slog.Error("restart: cannot determine executable path", "error", err)
-			os.Exit(1)
-		}
-		// After self-update, os.Executable() may return the .old path on Linux.
-		// Strip the .old suffix to restart from the updated binary.
-		if strings.HasSuffix(execPath, ".old") {
-			newPath := strings.TrimSuffix(execPath, ".old")
-			if _, err := os.Stat(newPath); err == nil {
-				execPath = newPath
-			}
-		}
-		slog.Info("restarting...", "path", execPath, "args", os.Args)
-		if err := restartProcess(execPath); err != nil {
+		if err := restartCurrentProcess(cfg, restartReq); err != nil {
 			slog.Error("restart: failed", "error", err)
 			os.Exit(1)
 		}
@@ -592,7 +571,46 @@ func runBotMode(cfg *config.Config) error {
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	<-sigCh
+	restartReq := waitForShutdownOrRestart(sigCh, core.RestartCh)
+	if restartReq != nil {
+		return restartCurrentProcess(cfg, restartReq)
+	}
+	return nil
+}
+
+func waitForShutdownOrRestart(sigCh <-chan os.Signal, restartCh <-chan core.RestartRequest) *core.RestartRequest {
+	select {
+	case <-sigCh:
+		return nil
+	case req := <-restartCh:
+		slog.Info("restart requested via /restart command", "session", req.SessionKey, "platform", req.Platform)
+		return &req
+	}
+}
+
+func restartCurrentProcess(cfg *config.Config, restartReq *core.RestartRequest) error {
+	if restartReq == nil {
+		return nil
+	}
+	if err := core.SaveRestartNotify(cfg.DataDir, *restartReq); err != nil {
+		slog.Error("restart: save notify failed", "error", err)
+	}
+	execPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("restart: cannot determine executable path: %w", err)
+	}
+	// After self-update, os.Executable() may return the .old path on Linux.
+	// Strip the .old suffix to restart from the updated binary.
+	if strings.HasSuffix(execPath, ".old") {
+		newPath := strings.TrimSuffix(execPath, ".old")
+		if _, err := os.Stat(newPath); err == nil {
+			execPath = newPath
+		}
+	}
+	slog.Info("restarting...", "path", execPath, "args", os.Args)
+	if err := restartProcessFn(execPath); err != nil {
+		return fmt.Errorf("restart process: %w", err)
+	}
 	return nil
 }
 
