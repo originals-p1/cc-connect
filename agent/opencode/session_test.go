@@ -8,19 +8,70 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/chenhg5/cc-connect/core"
 )
 
-func TestOpencodeSessionSendUsesModeAndImages(t *testing.T) {
+func writeFakeOpencode(t *testing.T) string {
+	t.Helper()
 	binDir := t.TempDir()
-	workDir := t.TempDir()
-	logPath := filepath.Join(t.TempDir(), "args.log")
 	cmdPath := filepath.Join(binDir, "opencode")
-	script := "#!/bin/sh\nprintf '%s\n' \"$@\" > \"$CC_ARGS_LOG\"\ncat <<'EOF'\n{\"type\":\"step_start\",\"part\":{\"sessionID\":\"ses_test\"}}\n{\"type\":\"step_finish\",\"part\":{}}\nEOF\n"
+	script := `#!/bin/sh
+set -eu
+
+cmd="${1:-}"
+shift || true
+
+case "$cmd" in
+  run)
+    if [ -n "${CC_ARGS_LOG:-}" ]; then
+      printf '%s\n' "$cmd" "$@" >> "$CC_ARGS_LOG"
+    fi
+    if [ -n "${CC_RUN_OUTPUT:-}" ]; then
+      printf '%s\n' "$CC_RUN_OUTPUT"
+    else
+      cat <<'EOF'
+{"type":"step_start","part":{"sessionID":"ses_test"}}
+{"type":"step_finish","part":{}}
+EOF
+    fi
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+`
 	if err := os.WriteFile(cmdPath, []byte(script), 0o755); err != nil {
 		t.Fatalf("write fake opencode: %v", err)
 	}
+	return cmdPath
+}
+
+func collectUntilResult(t *testing.T, events <-chan core.Event) []core.Event {
+	t.Helper()
+	var seen []core.Event
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case event, ok := <-events:
+			if !ok {
+				t.Fatalf("events closed before result")
+			}
+			seen = append(seen, event)
+			if event.Type == core.EventResult {
+				return seen
+			}
+		case <-deadline:
+			t.Fatal("timed out waiting for result event")
+		}
+	}
+}
+
+func TestOpencodeSessionSendUsesDirectRunModeAndImages(t *testing.T) {
+	workDir := t.TempDir()
+	logPath := filepath.Join(t.TempDir(), "args.log")
+	cmdPath := writeFakeOpencode(t)
 	t.Setenv("CC_ARGS_LOG", logPath)
 
 	s, err := newOpencodeSession(context.Background(), cmdPath, workDir, "openai/gpt-4.1", "yolo", "", nil)
@@ -34,11 +85,7 @@ func TestOpencodeSessionSendUsesModeAndImages(t *testing.T) {
 		t.Fatalf("Send() error = %v", err)
 	}
 
-	for event := range s.Events() {
-		if event.Type == core.EventResult {
-			break
-		}
-	}
+	collectUntilResult(t, s.Events())
 
 	b, err := os.ReadFile(logPath)
 	if err != nil {
@@ -48,6 +95,9 @@ func TestOpencodeSessionSendUsesModeAndImages(t *testing.T) {
 	joined := strings.Join(args, " ")
 	if !strings.Contains(joined, "--agent coder") {
 		t.Fatalf("args = %q, want yolo mode to add --agent coder", joined)
+	}
+	if strings.Contains(joined, "--attach") {
+		t.Fatalf("args = %q, should not use attached resident server", joined)
 	}
 	if !strings.Contains(joined, "review this") {
 		t.Fatalf("args = %q, want original prompt", joined)
@@ -61,7 +111,7 @@ func TestOpencodeSessionSendUsesModeAndImages(t *testing.T) {
 }
 
 func TestOpencodeSessionHandleErrorEvent(t *testing.T) {
-	s, err := newOpencodeSession(context.Background(), "opencode", ".", "", "default", "", nil)
+	s, err := newOpencodeSession(context.Background(), writeFakeOpencode(t), ".", "", "default", "", nil)
 	if err != nil {
 		t.Fatalf("newOpencodeSession() error = %v", err)
 	}
@@ -84,7 +134,7 @@ func TestOpencodeSessionHandleErrorEvent(t *testing.T) {
 }
 
 func TestOpencodeSessionToolResultUsesToolResultField(t *testing.T) {
-	s, err := newOpencodeSession(context.Background(), "opencode", ".", "", "default", "", nil)
+	s, err := newOpencodeSession(context.Background(), writeFakeOpencode(t), ".", "", "default", "", nil)
 	if err != nil {
 		t.Fatalf("newOpencodeSession() error = %v", err)
 	}
@@ -142,7 +192,7 @@ func TestFileExtForImagePrefersFilename(t *testing.T) {
 }
 
 func TestHandleToolUseInputMapSummary(t *testing.T) {
-	s, err := newOpencodeSession(context.Background(), "opencode", ".", "", "default", "", nil)
+	s, err := newOpencodeSession(context.Background(), writeFakeOpencode(t), ".", "", "default", "", nil)
 	if err != nil {
 		t.Fatalf("newOpencodeSession() error = %v", err)
 	}
@@ -168,5 +218,176 @@ func TestHandleToolUseInputMapSummary(t *testing.T) {
 	}
 	if decoded["command"] != "ls" {
 		t.Fatalf("decoded tool input = %v, want command ls", decoded)
+	}
+}
+
+func TestOpencodeSessionSuppressesTodoJSONText(t *testing.T) {
+	s, err := newOpencodeSession(context.Background(), writeFakeOpencode(t), ".", "", "default", "", nil)
+	if err != nil {
+		t.Fatalf("newOpencodeSession() error = %v", err)
+	}
+	defer s.Close()
+
+	s.handleText(map[string]any{
+		"part": map[string]any{
+			"text": `[
+				{"content":"Inspect current OpenCode agent integration","priority":"high","status":"in_progress"},
+				{"content":"Implement filtering","priority":"high","status":"pending"}
+			]`,
+		},
+	})
+
+	select {
+	case event := <-s.Events():
+		t.Fatalf("unexpected event: %+v", event)
+	default:
+	}
+}
+
+func TestOpencodeSessionKeepsRegularText(t *testing.T) {
+	s, err := newOpencodeSession(context.Background(), writeFakeOpencode(t), ".", "", "default", "", nil)
+	if err != nil {
+		t.Fatalf("newOpencodeSession() error = %v", err)
+	}
+	defer s.Close()
+
+	s.handleText(map[string]any{
+		"part": map[string]any{
+			"text": "Fixed the Telegram bridge to only send final user-facing replies.",
+		},
+	})
+
+	event := <-s.Events()
+	if event.Type != core.EventText {
+		t.Fatalf("event type = %q, want %q", event.Type, core.EventText)
+	}
+	if event.Content != "Fixed the Telegram bridge to only send final user-facing replies." {
+		t.Fatalf("event content = %q", event.Content)
+	}
+}
+
+func TestOpencodeSessionResumesWithStoredSessionID(t *testing.T) {
+	workDir := t.TempDir()
+	logPath := filepath.Join(t.TempDir(), "args.log")
+	cmdPath := writeFakeOpencode(t)
+	t.Setenv("CC_ARGS_LOG", logPath)
+
+	s, err := newOpencodeSession(context.Background(), cmdPath, workDir, "", "default", "ses_existing", nil)
+	if err != nil {
+		t.Fatalf("newOpencodeSession() error = %v", err)
+	}
+	defer s.Close()
+
+	if err := s.Send("continue", nil); err != nil {
+		t.Fatalf("Send() error = %v", err)
+	}
+
+	collectUntilResult(t, s.Events())
+
+	b, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read args log: %v", err)
+	}
+	joined := strings.Join(strings.Split(strings.TrimSpace(string(b)), "\n"), " ")
+	if !strings.Contains(joined, "--session ses_existing") {
+		t.Fatalf("args = %q, want stored session resume flag", joined)
+	}
+}
+
+func TestOpencodeSessionRetriesWithoutStaleSession(t *testing.T) {
+	workDir := t.TempDir()
+	logPath := filepath.Join(t.TempDir(), "args.log")
+	binDir := t.TempDir()
+	cmdPath := filepath.Join(binDir, "opencode")
+	script := `#!/bin/sh
+set -eu
+
+cmd="${1:-}"
+shift || true
+
+case "$cmd" in
+  run)
+    if [ -n "${CC_ARGS_LOG:-}" ]; then
+      printf '%s\n' "$cmd" "$@" >> "$CC_ARGS_LOG"
+    fi
+    joined=" $* "
+    if printf '%s' "$joined" | grep -q ' --session '; then
+      cat <<'EOF'
+{"type":"error","error":{"message":"Session not found"}}
+EOF
+      exit 1
+    fi
+    cat <<'EOF'
+{"type":"step_start","part":{"sessionID":"ses_rebound"}}
+{"type":"text","part":{"text":"fresh response"}}
+{"type":"step_finish","part":{}}
+EOF
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+`
+	if err := os.WriteFile(cmdPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake opencode: %v", err)
+	}
+	t.Setenv("CC_ARGS_LOG", logPath)
+
+	s, err := newOpencodeSession(context.Background(), cmdPath, workDir, "", "default", "ses_stale", nil)
+	if err != nil {
+		t.Fatalf("newOpencodeSession() error = %v", err)
+	}
+	defer s.Close()
+
+	if err := s.Send("hello again", nil); err != nil {
+		t.Fatalf("Send() error = %v", err)
+	}
+
+	events := collectUntilResult(t, s.Events())
+	if got := s.CurrentSessionID(); got != "ses_rebound" {
+		t.Fatalf("CurrentSessionID() = %q, want %q", got, "ses_rebound")
+	}
+
+	hadText := false
+	for _, event := range events {
+		if event.Type == core.EventError {
+			t.Fatalf("unexpected error event: %v", event.Error)
+		}
+		if event.Type == core.EventText && event.Content == "fresh response" {
+			hadText = true
+		}
+	}
+	if !hadText {
+		t.Fatalf("events = %+v, want fresh response text event", events)
+	}
+
+	b, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read args log: %v", err)
+	}
+	args := strings.Split(strings.TrimSpace(string(b)), "\n")
+	var runs [][]string
+	var current []string
+	for _, arg := range args {
+		if arg == "run" {
+			if len(current) > 0 {
+				runs = append(runs, current)
+			}
+			current = []string{arg}
+			continue
+		}
+		current = append(current, arg)
+	}
+	if len(current) > 0 {
+		runs = append(runs, current)
+	}
+	if len(runs) != 2 {
+		t.Fatalf("run count = %d, want 2; args=%q", len(runs), args)
+	}
+	if !strings.Contains(strings.Join(runs[0], " "), "--session ses_stale") {
+		t.Fatalf("first run args = %q, want stale session resume", strings.Join(runs[0], " "))
+	}
+	if strings.Contains(strings.Join(runs[1], " "), "--session") {
+		t.Fatalf("second run args = %q, want retry without session flag", strings.Join(runs[1], " "))
 	}
 }

@@ -22,20 +22,28 @@ import (
 )
 
 // opencodeSession manages multi-turn conversations with the OpenCode CLI.
-// Each Send() launches a new `opencode run --format json` process
-// with --session for conversation continuity.
+// Each Send() launches a fresh `opencode run --format json` process and uses
+// `--session` only when cc-connect already has a concrete OpenCode session ID.
 type opencodeSession struct {
-	cmd      string
-	workDir  string
-	model    string
-	mode     string
-	extraEnv []string
-	events   chan core.Event
-	chatID   atomic.Value // stores string — OpenCode session ID
-	ctx      context.Context
-	cancel   context.CancelFunc
-	wg       sync.WaitGroup
-	alive    atomic.Bool
+	cmd       string
+	workDir   string
+	model     string
+	mode      string
+	extraEnv  []string
+	events    chan core.Event
+	chatID    atomic.Value // stores string — OpenCode session ID
+	ctx       context.Context
+	cancel    context.CancelFunc
+	wg        sync.WaitGroup
+	alive     atomic.Bool
+	closeOnce sync.Once
+	sendMu    sync.Mutex
+	onClose   func(*opencodeSession)
+}
+
+type opencodeRunFailure struct {
+	err          error
+	staleSession bool
 }
 
 func newOpencodeSession(ctx context.Context, cmd, workDir, model, mode, resumeID string, extraEnv []string) (*opencodeSession, error) {
@@ -70,11 +78,45 @@ func (s *opencodeSession) Send(prompt string, images []core.ImageAttachment) err
 		return err
 	}
 
+	fullPrompt := prompt
+	if len(imageRefs) > 0 {
+		fullPrompt = strings.Join(imageRefs, " ") + "\n\n" + prompt
+	}
+
+	s.wg.Add(1)
+	go s.runPrompt(fullPrompt, cleanup)
+
+	return nil
+}
+
+func (s *opencodeSession) runPrompt(fullPrompt string, cleanup func()) {
+	defer s.wg.Done()
+	defer cleanup()
+
+	s.sendMu.Lock()
+	defer s.sendMu.Unlock()
+
+	for attempt := 0; attempt < 2; attempt++ {
+		failure := s.runPromptOnce(fullPrompt)
+		if failure == nil {
+			return
+		}
+		if failure.staleSession && attempt == 0 && s.CurrentSessionID() != "" {
+			staleID := s.CurrentSessionID()
+			slog.Warn("opencodeSession: stale session detected, retrying fresh session", "session_id", staleID)
+			s.chatID.Store("")
+			continue
+		}
+		s.emitError(failure.err)
+		return
+	}
+}
+
+func (s *opencodeSession) runPromptOnce(fullPrompt string) *opencodeRunFailure {
 	chatID := s.CurrentSessionID()
 	isResume := chatID != ""
 
 	args := []string{"run", "--format", "json"}
-
 	if isResume {
 		args = append(args, "--session", chatID)
 	}
@@ -87,17 +129,7 @@ func (s *opencodeSession) Send(prompt string, images []core.ImageAttachment) err
 	if s.mode == "yolo" {
 		args = append(args, "--agent", "coder")
 	}
-
-	// Enable thinking blocks
-	args = append(args, "--thinking")
-
-	fullPrompt := prompt
-	if len(imageRefs) > 0 {
-		fullPrompt = strings.Join(imageRefs, " ") + "\n\n" + prompt
-	}
-
-	// Append prompt as positional arg
-	args = append(args, fullPrompt)
+	args = append(args, "--thinking", fullPrompt)
 
 	slog.Debug("opencodeSession: launching", "resume", isResume, "args", core.RedactArgs(args))
 
@@ -111,43 +143,23 @@ func (s *opencodeSession) Send(prompt string, images []core.ImageAttachment) err
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return fmt.Errorf("opencodeSession: stdout pipe: %w", err)
+		return &opencodeRunFailure{err: fmt.Errorf("opencodeSession: stdout pipe: %w", err)}
 	}
 
 	var stderrBuf bytes.Buffer
 	cmd.Stderr = &stderrBuf
 
 	if err := cmd.Start(); err != nil {
-		cleanup()
-		return fmt.Errorf("opencodeSession: start: %w", err)
+		return &opencodeRunFailure{err: fmt.Errorf("opencodeSession: start: %w", err)}
 	}
 
-	s.wg.Add(1)
-	go s.readLoop(cmd, stdout, &stderrBuf, cleanup)
-
-	return nil
+	return s.readLoop(cmd, stdout, &stderrBuf)
 }
 
-func (s *opencodeSession) readLoop(cmd *exec.Cmd, stdout io.ReadCloser, stderrBuf *bytes.Buffer, cleanup func()) {
-	defer s.wg.Done()
-	defer func() {
-		cleanup()
-		if err := cmd.Wait(); err != nil {
-			stderrMsg := strings.TrimSpace(stderrBuf.String())
-			if stderrMsg == "" {
-				stderrMsg = err.Error()
-			}
-			slog.Error("opencodeSession: process failed", "error", err, "stderr", stderrMsg)
-			evt := core.Event{Type: core.EventError, Error: fmt.Errorf("%s", stderrMsg)}
-			select {
-			case s.events <- evt:
-			case <-s.ctx.Done():
-				return
-			}
-		}
-	}()
-
+func (s *opencodeSession) readLoop(cmd *exec.Cmd, stdout io.ReadCloser, stderrBuf *bytes.Buffer) *opencodeRunFailure {
 	reader := core.NewAgentLineReader(stdout)
+	var eventErr string
+	var staleEventErr string
 
 	for {
 		line, err := reader.ReadLine()
@@ -161,7 +173,7 @@ func (s *opencodeSession) readLoop(cmd *exec.Cmd, stdout io.ReadCloser, stderrBu
 				case s.events <- evt:
 				case <-s.ctx.Done():
 				}
-				return
+				return nil
 			}
 			slog.Error("opencodeSession: line reader error", "error", err)
 			evt := core.Event{Type: core.EventError, Error: fmt.Errorf("read stdout: %w", err)}
@@ -169,7 +181,7 @@ func (s *opencodeSession) readLoop(cmd *exec.Cmd, stdout io.ReadCloser, stderrBu
 			case s.events <- evt:
 			case <-s.ctx.Done():
 			}
-			return
+			return nil
 		}
 		if line == "" {
 			continue
@@ -181,8 +193,48 @@ func (s *opencodeSession) readLoop(cmd *exec.Cmd, stdout io.ReadCloser, stderrBu
 			continue
 		}
 
+		if eventType, _ := raw["type"].(string); eventType == "error" {
+			errMsg := opencodeErrorMessage(raw)
+			if isStaleOpenCodeSessionError(errMsg) {
+				staleEventErr = errMsg
+				continue
+			}
+			eventErr = errMsg
+			s.emitError(fmt.Errorf("%s", errMsg))
+			continue
+		}
+
 		s.handleEvent(raw)
 	}
+
+	if err := cmd.Wait(); err != nil {
+		if s.ctx.Err() != nil {
+			return nil
+		}
+		stderrMsg := strings.TrimSpace(stderrBuf.String())
+		msg := stderrMsg
+		if msg == "" && staleEventErr != "" {
+			msg = staleEventErr
+		}
+		if msg == "" && eventErr != "" {
+			msg = eventErr
+		}
+		if msg == "" {
+			msg = err.Error()
+		}
+		stale := isStaleOpenCodeSessionError(msg) || isStaleOpenCodeSessionError(staleEventErr)
+		if eventErr != "" && !stale {
+			return nil
+		}
+		slog.Error("opencodeSession: process failed", "error", err, "stderr", msg, "stale_session", stale)
+		return &opencodeRunFailure{err: fmt.Errorf("%s", msg), staleSession: stale}
+	}
+
+	if staleEventErr != "" {
+		return &opencodeRunFailure{err: fmt.Errorf("%s", staleEventErr), staleSession: true}
+	}
+
+	return nil
 }
 
 // OpenCode NDJSON event structure:
@@ -211,26 +263,7 @@ func (s *opencodeSession) handleEvent(raw map[string]any) {
 }
 
 func (s *opencodeSession) handleError(raw map[string]any) {
-	errMsg := ""
-	if errObj, ok := raw["error"].(map[string]any); ok {
-		if data, ok := errObj["data"].(map[string]any); ok {
-			errMsg, _ = data["message"].(string)
-		}
-		if errMsg == "" {
-			errMsg, _ = errObj["message"].(string)
-		}
-	}
-	if errMsg == "" {
-		errMsg, _ = raw["message"].(string)
-	}
-	if strings.TrimSpace(errMsg) == "" {
-		errMsg = "OpenCode returned an error event"
-	}
-	evt := core.Event{Type: core.EventError, Error: fmt.Errorf("%s", errMsg)}
-	select {
-	case s.events <- evt:
-	case <-s.ctx.Done():
-	}
+	s.emitError(fmt.Errorf("%s", opencodeErrorMessage(raw)))
 }
 
 func (s *opencodeSession) handleText(raw map[string]any) {
@@ -240,6 +273,10 @@ func (s *opencodeSession) handleText(raw map[string]any) {
 	}
 	text, _ := part["text"].(string)
 	if text != "" {
+		if shouldSuppressOpenCodeText(text) {
+			slog.Debug("opencodeSession: suppressing structured internal text payload")
+			return
+		}
 		evt := core.Event{Type: core.EventText, Content: text}
 		select {
 		case s.events <- evt:
@@ -247,6 +284,60 @@ func (s *opencodeSession) handleText(raw map[string]any) {
 			return
 		}
 	}
+}
+
+func shouldSuppressOpenCodeText(text string) bool {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return false
+	}
+	if !strings.HasPrefix(trimmed, "[") && !strings.HasPrefix(trimmed, "{") {
+		return false
+	}
+
+	var decoded any
+	if err := json.Unmarshal([]byte(trimmed), &decoded); err != nil {
+		return false
+	}
+
+	return isInternalTaskPayload(decoded)
+}
+
+func isInternalTaskPayload(v any) bool {
+	switch val := v.(type) {
+	case []any:
+		if len(val) == 0 {
+			return false
+		}
+		for _, item := range val {
+			obj, ok := item.(map[string]any)
+			if !ok || !isTaskStateObject(obj) {
+				return false
+			}
+		}
+		return true
+	case map[string]any:
+		return isTaskStateObject(val)
+	default:
+		return false
+	}
+}
+
+func isTaskStateObject(obj map[string]any) bool {
+	content, ok := obj["content"].(string)
+	if !ok || strings.TrimSpace(content) == "" {
+		return false
+	}
+	status, ok := obj["status"].(string)
+	if !ok || strings.TrimSpace(status) == "" {
+		return false
+	}
+	if priority, ok := obj["priority"]; ok {
+		if p, ok := priority.(string); !ok || strings.TrimSpace(p) == "" {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *opencodeSession) handleToolUse(raw map[string]any) {
@@ -352,6 +443,17 @@ func (s *opencodeSession) Events() <-chan core.Event {
 	return s.events
 }
 
+func (s *opencodeSession) emitError(err error) {
+	if err == nil {
+		return
+	}
+	evt := core.Event{Type: core.EventError, Error: err}
+	select {
+	case s.events <- evt:
+	case <-s.ctx.Done():
+	}
+}
+
 func (s *opencodeSession) CurrentSessionID() string {
 	v, _ := s.chatID.Load().(string)
 	return v
@@ -362,19 +464,24 @@ func (s *opencodeSession) Alive() bool {
 }
 
 func (s *opencodeSession) Close() error {
-	s.alive.Store(false)
-	s.cancel()
-	done := make(chan struct{})
-	go func() {
-		s.wg.Wait()
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(8 * time.Second):
-		slog.Warn("opencodeSession: close timed out, abandoning wg.Wait")
-	}
-	close(s.events)
+	s.closeOnce.Do(func() {
+		s.alive.Store(false)
+		if s.onClose != nil {
+			s.onClose(s)
+		}
+		s.cancel()
+		done := make(chan struct{})
+		go func() {
+			s.wg.Wait()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(8 * time.Second):
+			slog.Warn("opencodeSession: close timed out, abandoning wg.Wait")
+		}
+		close(s.events)
+	})
 	return nil
 }
 
@@ -392,6 +499,34 @@ func lookupString(m map[string]any, keys ...string) string {
 		}
 	}
 	return ""
+}
+
+func opencodeErrorMessage(raw map[string]any) string {
+	errMsg := ""
+	if errObj, ok := raw["error"].(map[string]any); ok {
+		if data, ok := errObj["data"].(map[string]any); ok {
+			errMsg, _ = data["message"].(string)
+		}
+		if errMsg == "" {
+			errMsg, _ = errObj["message"].(string)
+		}
+	}
+	if errMsg == "" {
+		errMsg, _ = raw["message"].(string)
+	}
+	if strings.TrimSpace(errMsg) == "" {
+		return "OpenCode returned an error event"
+	}
+	return errMsg
+}
+
+func isStaleOpenCodeSessionError(msg string) bool {
+	trimmed := strings.ToLower(strings.TrimSpace(msg))
+	if trimmed == "" {
+		return false
+	}
+	return strings.Contains(trimmed, "session not found") ||
+		strings.Contains(trimmed, "failed to list agents")
 }
 
 func writeImageRefs(images []core.ImageAttachment) ([]string, func(), error) {
