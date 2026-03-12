@@ -8,8 +8,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/chenhg5/cc-connect/core"
 )
@@ -21,8 +23,8 @@ func init() {
 // Agent drives the OpenCode CLI in headless mode using `opencode run --format json`.
 //
 // Modes:
-//   - "default": standard mode
-//   - "yolo":    auto mode (opencode run is auto by default in non-interactive mode)
+//   - "default": standard non-interactive mode
+//   - "yolo":    explicit auto mode (same runtime today; kept for UI consistency)
 type Agent struct {
 	workDir    string
 	model      string
@@ -122,6 +124,20 @@ func (a *Agent) ListSessions(_ context.Context) ([]core.AgentSessionInfo, error)
 	return listOpencodeSessions(a.cmd, a.workDir)
 }
 
+func (a *Agent) DeleteSession(_ context.Context, sessionID string) error {
+	c := exec.Command(a.cmd, "session", "delete", sessionID)
+	c.Dir = a.workDir
+	out, err := c.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if msg == "" {
+			msg = err.Error()
+		}
+		return fmt.Errorf("opencode: delete session %s: %s", sessionID, msg)
+	}
+	return nil
+}
+
 func (a *Agent) Stop() error { return nil }
 
 // -- ModeSwitcher --
@@ -150,6 +166,26 @@ func (a *Agent) PermissionModes() []core.PermissionModeInfo {
 
 func (a *Agent) CompressCommand() string { return "/compact" }
 
+// -- CommandProvider --
+
+func (a *Agent) CommandDirs() []string {
+	absDir, err := filepath.Abs(a.workDir)
+	if err != nil {
+		absDir = a.workDir
+	}
+	dirs := []string{filepath.Join(absDir, ".opencode", "commands")}
+	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
+		dirs = append(dirs, filepath.Join(xdg, "opencode", "commands"))
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		dirs = append(dirs,
+			filepath.Join(home, ".config", "opencode", "commands"),
+			filepath.Join(home, ".opencode", "commands"),
+		)
+	}
+	return uniqueStrings(dirs)
+}
+
 // -- MemoryFileProvider --
 
 func (a *Agent) ProjectMemoryFile() string {
@@ -157,15 +193,18 @@ func (a *Agent) ProjectMemoryFile() string {
 	if err != nil {
 		absDir = a.workDir
 	}
-	return filepath.Join(absDir, "OPENCODE.md")
+	return filepath.Join(absDir, "OpenCode.md")
 }
 
 func (a *Agent) GlobalMemoryFile() string {
+	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
+		return filepath.Join(xdg, "opencode", "OpenCode.md")
+	}
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(homeDir, ".opencode", "OPENCODE.md")
+	return filepath.Join(homeDir, ".opencode", "OpenCode.md")
 }
 
 // -- ProviderSwitcher --
@@ -217,14 +256,62 @@ func (a *Agent) providerEnvLocked() []string {
 		return nil
 	}
 	p := a.providers[a.activeIdx]
-	var env []string
-	if p.APIKey != "" {
-		env = append(env, "ANTHROPIC_API_KEY="+p.APIKey)
-	}
+	env := providerEnvForOpenCode(p)
 	for k, v := range p.Env {
 		env = append(env, k+"="+v)
 	}
 	return env
+}
+
+func providerEnvForOpenCode(p core.ProviderConfig) []string {
+	var env []string
+	provider := detectProviderKind(p)
+	if p.APIKey != "" {
+		switch provider {
+		case "openai":
+			env = append(env, "OPENAI_API_KEY="+p.APIKey)
+		case "gemini":
+			env = append(env, "GEMINI_API_KEY="+p.APIKey)
+		case "groq":
+			env = append(env, "GROQ_API_KEY="+p.APIKey)
+		case "azure":
+			env = append(env, "AZURE_OPENAI_API_KEY="+p.APIKey)
+		case "openrouter":
+			env = append(env, "OPENROUTER_API_KEY="+p.APIKey)
+		default:
+			env = append(env, "ANTHROPIC_API_KEY="+p.APIKey)
+		}
+	}
+	if p.BaseURL != "" {
+		switch provider {
+		case "azure":
+			env = append(env, "AZURE_OPENAI_ENDPOINT="+p.BaseURL)
+		case "local":
+			env = append(env, "LOCAL_ENDPOINT="+p.BaseURL)
+		}
+	}
+	return env
+}
+
+func detectProviderKind(p core.ProviderConfig) string {
+	name := strings.ToLower(strings.TrimSpace(p.Name))
+	model := strings.ToLower(strings.TrimSpace(p.Model))
+	switch {
+	case strings.HasPrefix(model, "openai/") || strings.Contains(name, "openai"):
+		return "openai"
+	case strings.HasPrefix(model, "gemini/") || strings.Contains(name, "gemini") || strings.Contains(name, "google"):
+		return "gemini"
+	case strings.HasPrefix(model, "groq/") || strings.Contains(name, "groq"):
+		return "groq"
+	case strings.HasPrefix(model, "azure/") || strings.Contains(name, "azure"):
+		return "azure"
+	case strings.HasPrefix(model, "openrouter/") || strings.Contains(name, "openrouter"):
+		return "openrouter"
+	case strings.HasPrefix(model, "local/") || strings.Contains(name, "local") || strings.Contains(name, "self-host"):
+		return "local"
+	default:
+		return "anthropic"
+	}
 }
 
 // -- Session listing --
@@ -252,11 +339,45 @@ func listOpencodeSessions(cmd, workDir string) ([]core.AgentSessionInfo, error) 
 
 	var sessions []core.AgentSessionInfo
 	for _, e := range entries {
+		modTime := parseOpencodeTime(e.Updated)
 		sessions = append(sessions, core.AgentSessionInfo{
-			ID:      e.ID,
-			Summary: e.Title,
+			ID:         e.ID,
+			Summary:    e.Title,
+			ModifiedAt: modTime,
 		})
 	}
+	sort.Slice(sessions, func(i, j int) bool {
+		return sessions[i].ModifiedAt.After(sessions[j].ModifiedAt)
+	})
 
 	return sessions, nil
+}
+
+func parseOpencodeTime(raw string) time.Time {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}
+	}
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339} {
+		if ts, err := time.Parse(layout, raw); err == nil {
+			return ts
+		}
+	}
+	return time.Time{}
+}
+
+func uniqueStrings(items []string) []string {
+	seen := make(map[string]struct{}, len(items))
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		if item == "" {
+			continue
+		}
+		if _, ok := seen[item]; ok {
+			continue
+		}
+		seen[item] = struct{}{}
+		result = append(result, item)
+	}
+	return result
 }

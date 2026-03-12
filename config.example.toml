@@ -796,8 +796,8 @@ app_secret = "your-feishu-app-secret"
 # =============================================================================
 # Requires: OpenCode CLI — https://github.com/opencode-ai/opencode
 # 需要安装：OpenCode CLI
-# Uses `opencode run --format json` under the hood.
-# 底层使用 `opencode run --format json` 命令。
+# Uses `opencode run --format json` and `opencode session ...` under the hood.
+# 底层使用 `opencode run --format json` 和 `opencode session ...` 命令。
 
 # [[projects]]
 # name = "my-opencode-project"
@@ -808,6 +808,7 @@ app_secret = "your-feishu-app-secret"
 # [projects.agent.options]
 # work_dir = "/path/to/project"
 # mode = "default"  # "default" | "yolo"
+# cmd = "opencode"   # optional CLI binary name / 可选 CLI 二进制名称
 #
 # Mode options / 模式说明:
 # - "default": Standard mode / 标准模式
@@ -815,6 +816,15 @@ app_secret = "your-feishu-app-secret"
 #
 # Optional: specify a model (provider/model format) / 可选：指定模型
 # model = "anthropic/claude-sonnet-4-20250514"
+#
+# # Optional: switch providers through /provider and agent.providers
+# # 可选：通过 /provider 和 agent.providers 切换 provider
+# # provider = "my-openai"
+#
+# [[projects.agent.providers]]
+# name = "my-openai"
+# api_key = "sk-xxx"
+# model = "openai/gpt-4.1"
 #
 # [[projects.platforms]]
 # type = "telegram"
@@ -885,4 +895,3 @@ app_secret = "your-feishu-app-secret"
 #
 # [projects.platforms.options]
 # token = "your-discord-bot-token"
-

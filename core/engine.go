@@ -1069,6 +1069,24 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 				e.send(p, replyCtx, fmt.Sprintf(e.i18n.T(MsgTool), toolCount, event.ToolName, formattedInput))
 			}
 
+		case EventToolResult:
+			if !quiet && event.ToolResult != "" {
+				sp.freeze()
+				resultPreview := truncateIf(event.ToolResult, e.display.ToolMaxLen)
+				lineCount := strings.Count(resultPreview, "\n") + 1
+				var formattedResult string
+				if lineCount > 5 || utf8.RuneCountInString(resultPreview) > 200 {
+					formattedResult = fmt.Sprintf("```\n%s\n```", resultPreview)
+				} else {
+					formattedResult = fmt.Sprintf("`%s`", resultPreview)
+				}
+				name := event.ToolName
+				if name == "" {
+					name = "tool"
+				}
+				e.send(p, replyCtx, fmt.Sprintf(e.i18n.T(MsgToolResult), name, formattedResult))
+			}
+
 		case EventText:
 			if event.Content != "" {
 				textParts = append(textParts, event.Content)
@@ -1181,13 +1199,13 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 				slog.Debug("EventResult: finalized via stream preview", "response_len", len(fullResponse))
 			} else {
 				slog.Debug("EventResult: sending via p.Send (preview inactive or failed)", "response_len", len(fullResponse), "chunks", len(splitMessage(fullResponse, maxPlatformMessageLen)))
-					for _, chunk := range splitMessage(fullResponse, maxPlatformMessageLen) {
-						if err := p.Send(e.ctx, replyCtx, chunk); err != nil {
-							slog.Error("failed to send reply", "error", err, "msg_id", msgID)
-							return interactiveTurnDone
-						}
+				for _, chunk := range splitMessage(fullResponse, maxPlatformMessageLen) {
+					if err := p.Send(e.ctx, replyCtx, chunk); err != nil {
+						slog.Error("failed to send reply", "error", err, "msg_id", msgID)
+						return interactiveTurnDone
 					}
 				}
+			}
 
 			if elapsed := time.Since(replyStart); elapsed >= slowPlatformSend {
 				slog.Warn("slow final reply send", "platform", p.Name(), "elapsed", elapsed, "response_len", len(fullResponse))

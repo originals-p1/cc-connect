@@ -302,8 +302,8 @@ app_secret = "your-app-secret"
 
 | 模式 | 配置值 | 行为 |
 |------|--------|------|
-| **默认** | `default` | 标准模式。 |
-| **全自动** | `yolo` | 自动批准所有工具调用。 |
+| **默认** | `default` | 标准的非交互运行模式。 |
+| **全自动** | `yolo` | 保持与其他 Agent 一致的模式语义；实际审批仍由 OpenCode 自身机制控制。 |
 
 **iFlow CLI** 模式：
 
@@ -423,7 +423,7 @@ cc-connect provider import --db-path ~/.cc-switch/cc-switch.db    # 指定数据
 | Claude Code | `ANTHROPIC_API_KEY` | `ANTHROPIC_BASE_URL` |
 | Codex | `OPENAI_API_KEY` | `OPENAI_BASE_URL` |
 | Gemini CLI | `GEMINI_API_KEY` | —（使用 `env` 字段）|
-| OpenCode | `ANTHROPIC_API_KEY` | —（使用 `env` 字段）|
+| OpenCode | 根据 provider/model 自动推断（如 `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`GEMINI_API_KEY`、`GROQ_API_KEY`、`AZURE_OPENAI_API_KEY`、`OPENROUTER_API_KEY`） | 适用时映射到 `AZURE_OPENAI_ENDPOINT` 或 `LOCAL_ENDPOINT` |
 | iFlow CLI | `IFLOW_API_KEY` / `IFLOW_apiKey` | `IFLOW_BASE_URL` / `IFLOW_baseUrl` |
 
 Provider 配置中的 `env` 字段支持设置任意环境变量，可用于 Bedrock、Vertex、Azure、自定义代理等各种场景。
@@ -622,7 +622,7 @@ Claude Code 会通过 `--append-system-prompt` 自动将你的请求转为 `cc-c
 | Cursor | `.cursorrules` |
 | Qoder CLI | `AGENTS.md`（项目级）、`~/.qoder/AGENTS.md`（全局） |
 | Gemini CLI | `GEMINI.md` |
-| OpenCode | `OPENCODE.md` |
+| OpenCode | `OpenCode.md` |
 | iFlow CLI | `IFLOW.md` |
 
 **需要添加的内容：**
@@ -865,4 +865,3 @@ cc-connect/
 ## License
 
 MIT
-

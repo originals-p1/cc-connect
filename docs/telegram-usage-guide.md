@@ -118,6 +118,8 @@ token = "你的Token"
 allow_from = "123456789,987654321"
 ```
 
+设置后，只有这些 `message.from.id` 对应的 Telegram 用户能实际使用机器人；其他人即使搜到机器人，也不会被处理。
+
 **使用 HTTP 代理（无法直连 Telegram 时）：**
 
 ```toml
@@ -142,7 +144,7 @@ token = "你的Token"
 group_reply_all = true
 ```
 
-### 4.4 获取用户 ID（用于 allow_from）
+### 4.4 获取用户 ID（用于 allow_from 白名单）
 
 1. 先不设 `allow_from`，启动 cc-connect 后向机器人发一条消息。
 2. 浏览器访问（将 `你的Token` 替换为实际 token）：

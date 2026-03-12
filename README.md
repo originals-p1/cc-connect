@@ -304,8 +304,8 @@ All agents support permission modes switchable at runtime via `/mode`.
 
 | Mode | Config Value | Behavior |
 |------|-------------|----------|
-| **Default** | `default` | Standard mode. |
-| **YOLO** | `yolo` | Auto-approve all tool calls. |
+| **Default** | `default` | Standard non-interactive run mode. |
+| **YOLO** | `yolo` | Keeps cc-connect mode semantics aligned with other agents; OpenCode still uses its own internal approval model. |
 
 **iFlow CLI** modes:
 
@@ -425,7 +425,7 @@ Adding, removing, and switching providers all persist to `config.toml` automatic
 | Claude Code | `ANTHROPIC_API_KEY` | `ANTHROPIC_BASE_URL` |
 | Codex | `OPENAI_API_KEY` | `OPENAI_BASE_URL` |
 | Gemini CLI | `GEMINI_API_KEY` | — (use `env` map) |
-| OpenCode | `ANTHROPIC_API_KEY` | — (use `env` map) |
+| OpenCode | inferred from provider/model (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `AZURE_OPENAI_API_KEY`, `OPENROUTER_API_KEY`) | `AZURE_OPENAI_ENDPOINT` or `LOCAL_ENDPOINT` when applicable |
 | iFlow CLI | `IFLOW_API_KEY` / `IFLOW_apiKey` | `IFLOW_BASE_URL` / `IFLOW_baseUrl` |
 
 The `env` map in provider config lets you set arbitrary environment variables for any setup (Bedrock, Vertex, Azure, custom proxies, etc.).
@@ -671,7 +671,7 @@ Claude Code will automatically translate your request into a `cc-connect cron ad
 | Cursor | `.cursorrules` |
 | Qoder CLI | `AGENTS.md` (project), `~/.qoder/AGENTS.md` (global) |
 | Gemini CLI | `GEMINI.md` |
-| OpenCode | `OPENCODE.md` |
+| OpenCode | `OpenCode.md` |
 | iFlow CLI | `IFLOW.md` |
 
 **Content to add:**
@@ -979,4 +979,3 @@ Thanks to all the people who contributed to this project:
 ## License
 
 MIT
-

@@ -325,6 +325,35 @@ func TestProcessInteractiveMessageStopsAfterSingleAutoCompressRetry(t *testing.T
 	}
 }
 
+func TestProcessInteractiveEventsSendsToolResultPreview(t *testing.T) {
+	sessionStub := newAutoCompressSession(func(prompt string) []Event {
+		if prompt != "hello" {
+			return nil
+		}
+		return []Event{
+			{Type: EventToolUse, ToolName: "Bash", ToolInput: "pwd"},
+			{Type: EventToolResult, ToolName: "Bash", ToolResult: "/tmp/project"},
+			{Type: EventResult, Content: "done", SessionID: "tool-session"},
+		}
+	})
+	engine := newTestEngineWithAgent(&autoCompressAgent{session: sessionStub, compressCommand: "/compress"})
+	platform := &stubPlatformEngine{n: "test"}
+	msg := &Message{SessionKey: "tool:s1", Content: "hello", ReplyCtx: "ctx"}
+	session := engine.sessions.GetOrCreateActive(msg.SessionKey)
+
+	engine.processInteractiveMessage(platform, msg, session)
+
+	if len(platform.sent) < 3 {
+		t.Fatalf("platform sent = %v, want tool use, tool result, final reply", platform.sent)
+	}
+	if !strings.Contains(platform.sent[1], "Tool Result: Bash") {
+		t.Fatalf("tool result message = %q, want tool result preview", platform.sent[1])
+	}
+	if !strings.Contains(platform.sent[1], "/tmp/project") {
+		t.Fatalf("tool result message = %q, want tool output", platform.sent[1])
+	}
+}
+
 type taskStubAgent struct {
 	session *taskStubSession
 }

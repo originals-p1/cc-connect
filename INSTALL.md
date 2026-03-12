@@ -436,7 +436,7 @@ cc-connect supports scheduled tasks (cron jobs). You can always create them via 
 | Cursor Agent | `.cursorrules` |
 | Qoder CLI | `AGENTS.md` |
 | Gemini CLI | `GEMINI.md` |
-| OpenCode | `OPENCODE.md` |
+| OpenCode | `OpenCode.md` |
 | iFlow CLI | `IFLOW.md` |
 
 **Content to add** (copy-paste into the file):
@@ -677,7 +677,7 @@ The following additional features are available:
 - **Cursor Agent**: Cursor Agent CLI integration (`agent --print --output-format stream-json`)
 - **Gemini CLI**: Google Gemini CLI integration (`gemini -p --output-format stream-json`)
 - **Qoder CLI**: Qoder CLI integration (`qodercli -p -f stream-json`)
-- **OpenCode**: OpenCode CLI integration (`opencode run --format json`)
+- **OpenCode**: OpenCode CLI integration (`opencode run --format json`, `opencode session list/delete`) with provider switching, image attachments, and session deletion support
 - **iFlow CLI**: iFlow CLI integration (`iflow -i -r -o`)
 - **Voice Messages (STT)**: Speech-to-text via Whisper API (OpenAI / Groq / SiliconFlow). Requires `ffmpeg` and `[speech]` config.
 - **Voice Reply (TTS)**: Text-to-speech via Qwen TTS / OpenAI TTS. Requires `ffmpeg` and `[tts]` config.

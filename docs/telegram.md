@@ -75,13 +75,28 @@ type = "telegram"
 token = "1234567890:ABCdefGHIjklMNOpqrsTUVwxyz-123456"
 ```
 
+To allow only specific Telegram users to use the bot, set `allow_from` to a
+comma-separated list of Telegram numeric user IDs:
+
+```toml
+[[projects.platforms]]
+type = "telegram"
+
+[projects.platforms.options]
+token = "1234567890:ABCdefGHIjklMNOpqrsTUVwxyz-123456"
+allow_from = "123456789,987654321"
+```
+
+Leave `allow_from` empty, or set it to `"*"`, to allow all users.
+
 ---
 
-## Step 3: Get Chat ID (Optional)
+## Step 3: Get IDs For Access Control (Optional)
 
-If you want to restrict the bot to specific users/groups, you'll need the Chat ID.
+If you want to restrict the bot to specific users, you need each user's Telegram
+numeric user ID for `allow_from`.
 
-### 3.1 Get Your Personal Chat ID
+### 3.1 Get A User ID
 
 1. Send any message to your bot
 2. Visit the following URL (replace `{{TOKEN}}` with your token):
@@ -90,15 +105,16 @@ If you want to restrict the bot to specific users/groups, you'll need the Chat I
 https://api.telegram.org/bot{{TOKEN}}/getUpdates
 ```
 
-3. Find the `chat.id` field in the returned JSON
+3. Find the `message.from.id` field in the returned JSON
 
-### 3.2 Get a Group Chat ID
+### 3.2 Get A Group Chat ID
 
 1. Add the bot to a group
 2. Send a message mentioning @your_bot in the group
 3. Check the `getUpdates` URL — group Chat IDs are usually negative numbers
 
-> Note: Chat ID whitelisting is planned for a future release.
+> Note: Telegram currently supports user-ID whitelisting through `allow_from`.
+> Chat-ID whitelisting is planned for a future release.
 
 ---
 
