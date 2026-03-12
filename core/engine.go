@@ -5176,6 +5176,11 @@ func (e *Engine) HandleRelay(ctx context.Context, fromProject, chatID, message s
 	if err != nil {
 		return "", fmt.Errorf("start relay session: %w", err)
 	}
+	defer func() {
+		if err := agentSession.Close(); err != nil {
+			slog.Debug("relay: failed to close agent session", "error", err, "project", e.name)
+		}
+	}()
 
 	if session.AgentSessionID == "" {
 		session.AgentSessionID = agentSession.CurrentSessionID()

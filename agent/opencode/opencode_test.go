@@ -1,6 +1,8 @@
 package opencode
 
 import (
+	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -97,6 +99,16 @@ func TestParseOpencodeTime(t *testing.T) {
 	if got, want := ts.UTC().Format(time.RFC3339), "2026-03-12T11:22:33Z"; got != want {
 		t.Fatalf("parseOpencodeTime() = %q, want %q", got, want)
 	}
+
+	ts = parseOpencodeTime(float64(1741735353))
+	if got, want := ts.UTC().Format(time.RFC3339), "2025-03-11T23:22:33Z"; got != want {
+		t.Fatalf("parseOpencodeTime(float64) = %q, want %q", got, want)
+	}
+
+	ts = parseOpencodeTime(json.Number("1741735353000"))
+	if got, want := ts.UTC().Format(time.RFC3339), "2025-03-11T23:22:33Z"; got != want {
+		t.Fatalf("parseOpencodeTime(json.Number) = %q, want %q", got, want)
+	}
 }
 
 func TestListOpencodeSessionsSortsByUpdatedDesc(t *testing.T) {
@@ -117,6 +129,63 @@ func TestListOpencodeSessionsSortsByUpdatedDesc(t *testing.T) {
 	}
 	if sessions[0].ID != "new" || sessions[1].ID != "old" {
 		t.Fatalf("session order = %v, want [new old]", []string{sessions[0].ID, sessions[1].ID})
+	}
+}
+
+func TestListOpencodeSessionsAcceptsNumericUpdated(t *testing.T) {
+	binDir := t.TempDir()
+	workDir := t.TempDir()
+	cmdPath := filepath.Join(binDir, "opencode")
+	script := "#!/bin/sh\nif [ \"$1\" = \"session\" ] && [ \"$2\" = \"list\" ]; then\ncat <<'EOF'\n[{\"id\":\"old\",\"title\":\"Old\",\"updated\":1741735352},{\"id\":\"new\",\"title\":\"New\",\"updated\":1741735353}]\nEOF\nexit 0\nfi\nexit 1\n"
+	if err := os.WriteFile(cmdPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake opencode: %v", err)
+	}
+
+	sessions, err := listOpencodeSessions(cmdPath, workDir)
+	if err != nil {
+		t.Fatalf("listOpencodeSessions() error = %v", err)
+	}
+	if len(sessions) != 2 {
+		t.Fatalf("session count = %d, want 2", len(sessions))
+	}
+	if sessions[0].ID != "new" || sessions[1].ID != "old" {
+		t.Fatalf("session order = %v, want [new old]", []string{sessions[0].ID, sessions[1].ID})
+	}
+}
+
+func TestListOpencodeSessionsAllowsEmptyOutput(t *testing.T) {
+	binDir := t.TempDir()
+	workDir := t.TempDir()
+	cmdPath := filepath.Join(binDir, "opencode")
+	script := "#!/bin/sh\nif [ \"$1\" = \"session\" ] && [ \"$2\" = \"list\" ]; then\nexit 0\nfi\nexit 1\n"
+	if err := os.WriteFile(cmdPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake opencode: %v", err)
+	}
+
+	sessions, err := listOpencodeSessions(cmdPath, workDir)
+	if err != nil {
+		t.Fatalf("listOpencodeSessions() error = %v", err)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("session count = %d, want 0", len(sessions))
+	}
+}
+
+func TestListOpencodeSessionsAllowsWhitespaceOnlyOutput(t *testing.T) {
+	binDir := t.TempDir()
+	workDir := t.TempDir()
+	cmdPath := filepath.Join(binDir, "opencode")
+	script := "#!/bin/sh\nif [ \"$1\" = \"session\" ] && [ \"$2\" = \"list\" ]; then\nprintf '\\n  \\t  \\n'\nexit 0\nfi\nexit 1\n"
+	if err := os.WriteFile(cmdPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake opencode: %v", err)
+	}
+
+	sessions, err := listOpencodeSessions(cmdPath, workDir)
+	if err != nil {
+		t.Fatalf("listOpencodeSessions() error = %v", err)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("session count = %d, want 0", len(sessions))
 	}
 }
 
@@ -141,5 +210,29 @@ func TestDeleteSessionRunsCLI(t *testing.T) {
 	}
 	if got := string(b); got != "ses_123" {
 		t.Fatalf("deleted session = %q, want %q", got, "ses_123")
+	}
+}
+
+func TestAgentStopClosesTrackedSessions(t *testing.T) {
+	a := &Agent{sessions: make(map[*opencodeSession]struct{})}
+	ctx1, cancel1 := context.WithCancel(context.Background())
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	defer cancel1()
+	defer cancel2()
+	s1 := &opencodeSession{ctx: ctx1, cancel: cancel1, events: make(chan core.Event), onClose: a.untrackSession}
+	s1.alive.Store(true)
+	s2 := &opencodeSession{ctx: ctx2, cancel: cancel2, events: make(chan core.Event), onClose: a.untrackSession}
+	s2.alive.Store(true)
+	a.trackSession(s1)
+	a.trackSession(s2)
+
+	if err := a.Stop(); err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+	if s1.Alive() || s2.Alive() {
+		t.Fatalf("sessions should be marked closed after Stop(): s1=%v s2=%v", s1.Alive(), s2.Alive())
+	}
+	if got := len(a.sessions); got != 0 {
+		t.Fatalf("tracked sessions = %d, want 0", got)
 	}
 }

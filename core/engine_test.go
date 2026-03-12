@@ -390,6 +390,38 @@ func (s *taskStubSession) CurrentSessionID() string                             
 func (s *taskStubSession) Alive() bool                                          { return true }
 func (s *taskStubSession) Close() error                                         { return nil }
 
+type relayStubAgent struct {
+	session *relayStubSession
+}
+
+func (a *relayStubAgent) Name() string { return "relay-stub" }
+func (a *relayStubAgent) StartSession(_ context.Context, _ string) (AgentSession, error) {
+	return a.session, nil
+}
+func (a *relayStubAgent) ListSessions(_ context.Context) ([]AgentSessionInfo, error) { return nil, nil }
+func (a *relayStubAgent) Stop() error                                                { return nil }
+
+type relayStubSession struct {
+	events chan Event
+	closed int
+	sends  []string
+}
+
+func (s *relayStubSession) Send(prompt string, _ []ImageAttachment) error {
+	s.sends = append(s.sends, prompt)
+	s.events <- Event{Type: EventText, Content: "relay ok"}
+	s.events <- Event{Type: EventResult, SessionID: "relay-session", Done: true}
+	return nil
+}
+func (s *relayStubSession) RespondPermission(_ string, _ PermissionResult) error { return nil }
+func (s *relayStubSession) Events() <-chan Event                                 { return s.events }
+func (s *relayStubSession) CurrentSessionID() string                             { return "relay-session" }
+func (s *relayStubSession) Alive() bool                                          { return true }
+func (s *relayStubSession) Close() error {
+	s.closed++
+	return nil
+}
+
 func countCardActionValues(card *Card, prefix string) int {
 	count := 0
 	for _, elem := range card.Elements {
@@ -407,6 +439,29 @@ func countCardActionValues(card *Card, prefix string) int {
 		}
 	}
 	return count
+}
+
+func TestHandleRelayClosesAgentSession(t *testing.T) {
+	stubSession := &relayStubSession{events: make(chan Event, 4)}
+	engine := NewEngine("relay-target", &relayStubAgent{session: stubSession}, []Platform{&stubPlatformEngine{n: "test"}}, "", LangEnglish)
+
+	resp, err := engine.HandleRelay(context.Background(), "repo-a", "chat-1", "ping")
+	if err != nil {
+		t.Fatalf("HandleRelay() error = %v", err)
+	}
+	if resp != "relay ok" {
+		t.Fatalf("HandleRelay() response = %q, want %q", resp, "relay ok")
+	}
+	if stubSession.closed != 1 {
+		t.Fatalf("Close() count = %d, want 1", stubSession.closed)
+	}
+	if len(stubSession.sends) != 1 || stubSession.sends[0] != "ping" {
+		t.Fatalf("relay sends = %v, want [ping]", stubSession.sends)
+	}
+	active := engine.sessions.GetOrCreateActive("relay:repo-a:chat-1")
+	if active.AgentSessionID != "relay-session" {
+		t.Fatalf("AgentSessionID = %q, want %q", active.AgentSessionID, "relay-session")
+	}
 }
 
 func findCardAction(card *Card, value string) (CardButton, bool) {

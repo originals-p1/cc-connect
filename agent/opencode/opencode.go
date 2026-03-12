@@ -1,6 +1,7 @@
 package opencode
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -33,6 +34,7 @@ type Agent struct {
 	providers  []core.ProviderConfig
 	activeIdx  int
 	sessionEnv []string
+	sessions   map[*opencodeSession]struct{}
 	mu         sync.Mutex
 }
 
@@ -59,6 +61,7 @@ func New(opts map[string]any) (core.Agent, error) {
 		mode:      mode,
 		cmd:       cmd,
 		activeIdx: -1,
+		sessions:  make(map[*opencodeSession]struct{}),
 	}, nil
 }
 
@@ -116,7 +119,13 @@ func (a *Agent) StartSession(ctx context.Context, sessionID string) (core.AgentS
 	}
 	a.mu.Unlock()
 
-	return newOpencodeSession(ctx, cmd, workDir, model, mode, sessionID, extraEnv)
+	session, err := newOpencodeSession(ctx, cmd, workDir, model, mode, sessionID, extraEnv)
+	if err != nil {
+		return nil, err
+	}
+	a.trackSession(session)
+	session.onClose = a.untrackSession
+	return session, nil
 }
 
 // ListSessions runs `opencode session list` and parses the JSON output.
@@ -138,7 +147,40 @@ func (a *Agent) DeleteSession(_ context.Context, sessionID string) error {
 	return nil
 }
 
-func (a *Agent) Stop() error { return nil }
+func (a *Agent) Stop() error {
+	a.mu.Lock()
+	sessions := make([]*opencodeSession, 0, len(a.sessions))
+	for s := range a.sessions {
+		sessions = append(sessions, s)
+	}
+	a.mu.Unlock()
+
+	var errs []string
+	for _, s := range sessions {
+		if err := s.Close(); err != nil {
+			errs = append(errs, err.Error())
+		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("opencode: stop sessions: %s", strings.Join(errs, "; "))
+	}
+	return nil
+}
+
+func (a *Agent) trackSession(s *opencodeSession) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.sessions == nil {
+		a.sessions = make(map[*opencodeSession]struct{})
+	}
+	a.sessions[s] = struct{}{}
+}
+
+func (a *Agent) untrackSession(s *opencodeSession) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	delete(a.sessions, s)
+}
 
 // -- ModeSwitcher --
 
@@ -320,7 +362,7 @@ func detectProviderKind(p core.ProviderConfig) string {
 type opencodeSessionEntry struct {
 	ID      string `json:"id"`
 	Title   string `json:"title"`
-	Updated string `json:"updated"`
+	Updated any    `json:"updated"`
 }
 
 func listOpencodeSessions(cmd, workDir string) ([]core.AgentSessionInfo, error) {
@@ -330,6 +372,9 @@ func listOpencodeSessions(cmd, workDir string) ([]core.AgentSessionInfo, error) 
 	out, err := c.Output()
 	if err != nil {
 		return nil, fmt.Errorf("opencode: session list: %w", err)
+	}
+	if len(bytes.TrimSpace(out)) == 0 {
+		return nil, nil
 	}
 
 	var entries []opencodeSessionEntry
@@ -353,17 +398,45 @@ func listOpencodeSessions(cmd, workDir string) ([]core.AgentSessionInfo, error) 
 	return sessions, nil
 }
 
-func parseOpencodeTime(raw string) time.Time {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return time.Time{}
-	}
-	for _, layout := range []string{time.RFC3339Nano, time.RFC3339} {
-		if ts, err := time.Parse(layout, raw); err == nil {
-			return ts
+func parseOpencodeTime(raw any) time.Time {
+	switch v := raw.(type) {
+	case string:
+		v = strings.TrimSpace(v)
+		if v == "" {
+			return time.Time{}
+		}
+		for _, layout := range []string{time.RFC3339Nano, time.RFC3339} {
+			if ts, err := time.Parse(layout, v); err == nil {
+				return ts
+			}
+		}
+	case float64:
+		return parseUnixTimestamp(v)
+	case int64:
+		return parseUnixTimestamp(float64(v))
+	case int:
+		return parseUnixTimestamp(float64(v))
+	case json.Number:
+		if f, err := v.Float64(); err == nil {
+			return parseUnixTimestamp(f)
 		}
 	}
 	return time.Time{}
+}
+
+func parseUnixTimestamp(v float64) time.Time {
+	if v <= 0 {
+		return time.Time{}
+	}
+	sec := int64(v)
+	if sec >= 1_000_000_000_000_000 {
+		return time.UnixMicro(sec)
+	}
+	nsec := int64((v - float64(sec)) * float64(time.Second))
+	if sec >= 1_000_000_000_000 {
+		return time.UnixMilli(sec)
+	}
+	return time.Unix(sec, nsec)
 }
 
 func uniqueStrings(items []string) []string {
