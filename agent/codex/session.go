@@ -34,6 +34,7 @@ type codexSession struct {
 	alive    atomic.Bool
 
 	pendingMsgs []string // buffered agent_message texts awaiting classification
+	turnFailed  bool
 }
 
 func newCodexSession(ctx context.Context, workDir, model, mode, resumeID string, extraEnv []string) (*codexSession, error) {
@@ -123,17 +124,26 @@ func (cs *codexSession) Send(prompt string, images []core.ImageAttachment) error
 
 func (cs *codexSession) readLoop(cmd *exec.Cmd, stdout io.ReadCloser, stderrBuf *bytes.Buffer) {
 	defer cs.wg.Done()
+
+	// Check process exit after reading completes
 	defer func() {
 		if err := cmd.Wait(); err != nil {
+			if cs.turnFailed {
+				return
+			}
 			stderrMsg := strings.TrimSpace(stderrBuf.String())
+			var errorMsg string
 			if stderrMsg != "" {
-				slog.Error("codexSession: process failed", "error", err, "stderr", stderrMsg)
-				evt := core.Event{Type: core.EventError, Error: fmt.Errorf("%s", stderrMsg)}
-				select {
-				case cs.events <- evt:
-				case <-cs.ctx.Done():
-					return
-				}
+				errorMsg = stderrMsg
+			} else {
+				errorMsg = err.Error()
+			}
+			slog.Error("codexSession: process failed", "error", err, "stderr", stderrMsg)
+			evt := core.Event{Type: core.EventError, Error: fmt.Errorf("%s", errorMsg)}
+			select {
+			case cs.events <- evt:
+			case <-cs.ctx.Done():
+				return
 			}
 		}
 		if tid := cs.CurrentSessionID(); tid != "" {
@@ -193,6 +203,7 @@ func (cs *codexSession) handleEvent(raw map[string]any) {
 
 	case "turn.started":
 		cs.pendingMsgs = cs.pendingMsgs[:0]
+		cs.turnFailed = false
 		slog.Debug("codexSession: turn started")
 
 	case "item.started":
@@ -219,6 +230,7 @@ func (cs *codexSession) handleEvent(raw map[string]any) {
 			errMsg = "turn failed (no details)"
 		}
 		slog.Warn("codexSession: turn failed", "error", errMsg)
+		cs.turnFailed = true
 		evt := core.Event{Type: core.EventError, Error: fmt.Errorf("%s", errMsg)}
 		select {
 		case cs.events <- evt:

@@ -74,3 +74,50 @@ func TestPatchSessionSource_Idempotent(t *testing.T) {
 		t.Errorf("file was modified when it shouldn't have been")
 	}
 }
+
+func TestFindSessionFile_ExactMatch(t *testing.T) {
+	tmpDir := t.TempDir()
+	sessionsDir := filepath.Join(tmpDir, ".codex", "sessions")
+	if err := os.MkdirAll(sessionsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	sessionID := "abc-def-123"
+
+	// Create a file with an overlapping ID (substring match bug)
+	fname1 := filepath.Join(sessionsDir, "xyz-"+sessionID+"-extra.jsonl")
+	line1 := `{"type":"session_meta","payload":{"id":"xyz-abc-def-123-extra","cwd":"/tmp"}}`
+	if err := os.WriteFile(fname1, []byte(line1+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create the correct file
+	fname2 := filepath.Join(sessionsDir, "rollout-"+sessionID+".jsonl")
+	line2 := `{"type":"session_meta","payload":{"id":"` + sessionID + `","cwd":"/tmp"}}`
+	if err := os.WriteFile(fname2, []byte(line2+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("CODEX_HOME", filepath.Join(tmpDir, ".codex"))
+
+	found := findSessionFile(sessionID)
+	if found != fname2 {
+		t.Errorf("findSessionFile(%q) = %q, want %q", sessionID, found, fname2)
+	}
+}
+
+func TestFindSessionFile_NotFound(t *testing.T) {
+	tmpDir := t.TempDir()
+	sessionsDir := filepath.Join(tmpDir, ".codex", "sessions")
+	if err := os.MkdirAll(sessionsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	sessionID := "nonexistent-session"
+	t.Setenv("CODEX_HOME", filepath.Join(tmpDir, ".codex"))
+
+	found := findSessionFile(sessionID)
+	if found != "" {
+		t.Errorf("findSessionFile(%q) = %q, want empty string", sessionID, found)
+	}
+}

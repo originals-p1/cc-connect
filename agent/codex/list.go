@@ -161,6 +161,7 @@ func parseCodexSessionFile(path, filterCwd string) *core.AgentSessionInfo {
 }
 
 // findSessionFile locates the JSONL transcript for a given session ID.
+// It parses each file's session_meta to find an exact match on the session ID.
 func findSessionFile(sessionID string) string {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -177,8 +178,44 @@ func findSessionFile(sessionID string) string {
 		if err != nil || info.IsDir() || found != "" {
 			return nil
 		}
-		if strings.Contains(filepath.Base(path), sessionID) {
-			found = path
+		if !strings.HasSuffix(path, ".jsonl") {
+			return nil
+		}
+
+		f, err := os.Open(path)
+		if err != nil {
+			return nil
+		}
+		defer f.Close()
+
+		scanner := bufio.NewScanner(f)
+		scanner.Buffer(make([]byte, 256*1024), 256*1024)
+
+		for scanner.Scan() {
+			line := scanner.Text()
+			if line == "" {
+				continue
+			}
+
+			var entry struct {
+				Type    string          `json:"type"`
+				Payload json.RawMessage `json:"payload"`
+			}
+			if err := json.Unmarshal([]byte(line), &entry); err != nil {
+				continue
+			}
+
+			if entry.Type == "session_meta" {
+				var meta struct {
+					ID string `json:"id"`
+				}
+				if json.Unmarshal(entry.Payload, &meta) == nil && meta.ID == sessionID {
+					found = path
+					return filepath.SkipAll
+				}
+				break
+			}
+			break
 		}
 		return nil
 	})
