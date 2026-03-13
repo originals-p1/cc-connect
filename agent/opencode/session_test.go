@@ -294,6 +294,43 @@ func TestOpencodeSessionResumesWithStoredSessionID(t *testing.T) {
 	}
 }
 
+func TestOpencodeSessionDelaysResultUntilLateTextArrives(t *testing.T) {
+	workDir := t.TempDir()
+	cmdPath := writeFakeOpencode(t)
+	t.Setenv("CC_RUN_OUTPUT", strings.Join([]string{
+		`{"type":"step_start","part":{"sessionID":"ses_late"}}`,
+		`{"type":"step_finish","part":{}}`,
+		`{"type":"text","part":{"text":"late final answer"}}`,
+	}, "\n"))
+
+	s, err := newOpencodeSession(context.Background(), cmdPath, workDir, "", "default", "", nil)
+	if err != nil {
+		t.Fatalf("newOpencodeSession() error = %v", err)
+	}
+	defer s.Close()
+
+	if err := s.Send("analyze", nil); err != nil {
+		t.Fatalf("Send() error = %v", err)
+	}
+
+	events := collectUntilResult(t, s.Events())
+	if len(events) < 2 {
+		t.Fatalf("events = %+v, want text and result", events)
+	}
+	if events[len(events)-1].Type != core.EventResult {
+		t.Fatalf("last event type = %q, want %q", events[len(events)-1].Type, core.EventResult)
+	}
+	foundText := false
+	for _, event := range events[:len(events)-1] {
+		if event.Type == core.EventText && event.Content == "late final answer" {
+			foundText = true
+		}
+	}
+	if !foundText {
+		t.Fatalf("events = %+v, want late final answer text before result", events)
+	}
+}
+
 func TestOpencodeSessionRetriesWithoutStaleSession(t *testing.T) {
 	workDir := t.TempDir()
 	logPath := filepath.Join(t.TempDir(), "args.log")

@@ -228,6 +228,26 @@ func (a *Agent) CommandDirs() []string {
 	return uniqueStrings(dirs)
 }
 
+// -- SkillProvider --
+
+func (a *Agent) SkillDirs() []string {
+	absDir, err := filepath.Abs(a.workDir)
+	if err != nil {
+		absDir = a.workDir
+	}
+	dirs := []string{filepath.Join(absDir, ".opencode", "skills")}
+	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
+		dirs = append(dirs, filepath.Join(xdg, "opencode", "skills"))
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		dirs = append(dirs,
+			filepath.Join(home, ".config", "opencode", "skills"),
+			filepath.Join(home, ".opencode", "skills"),
+		)
+	}
+	return uniqueStrings(dirs)
+}
+
 // -- MemoryFileProvider --
 
 func (a *Agent) ProjectMemoryFile() string {
@@ -330,6 +350,16 @@ func providerEnvForOpenCode(p core.ProviderConfig) []string {
 			env = append(env, "AZURE_OPENAI_ENDPOINT="+p.BaseURL)
 		case "local":
 			env = append(env, "LOCAL_ENDPOINT="+p.BaseURL)
+		default:
+			env = append(env, "OPENAI_BASE_URL="+p.BaseURL)
+		}
+	}
+	if p.Thinking != "" {
+		switch p.Thinking {
+		case "disabled":
+			env = append(env, "OPENCODE_DISABLE_THINKING=1")
+		case "enabled":
+			env = append(env, "OPENCODE_ENABLE_THINKING=1")
 		}
 	}
 	return env

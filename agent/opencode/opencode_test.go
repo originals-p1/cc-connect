@@ -236,3 +236,26 @@ func TestAgentStopClosesTrackedSessions(t *testing.T) {
 		t.Fatalf("tracked sessions = %d, want 0", got)
 	}
 }
+
+func TestSkillDirs(t *testing.T) {
+	workDir := t.TempDir()
+	homeDir := t.TempDir()
+	xdgDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("XDG_CONFIG_HOME", xdgDir)
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", homeDir)
+	}
+
+	a := &Agent{workDir: workDir}
+	got := a.SkillDirs()
+	want := []string{
+		filepath.Join(workDir, ".opencode", "skills"),
+		filepath.Join(xdgDir, "opencode", "skills"),
+		filepath.Join(homeDir, ".config", "opencode", "skills"),
+		filepath.Join(homeDir, ".opencode", "skills"),
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("SkillDirs() = %v, want %v", got, want)
+	}
+}

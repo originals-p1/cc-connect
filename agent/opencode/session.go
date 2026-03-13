@@ -234,6 +234,12 @@ func (s *opencodeSession) readLoop(cmd *exec.Cmd, stdout io.ReadCloser, stderrBu
 		return &opencodeRunFailure{err: fmt.Errorf("%s", staleEventErr), staleSession: true}
 	}
 
+	evt := core.Event{Type: core.EventResult, SessionID: s.CurrentSessionID(), Done: true}
+	select {
+	case s.events <- evt:
+	case <-s.ctx.Done():
+	}
+
 	return nil
 }
 
@@ -425,13 +431,6 @@ func (s *opencodeSession) handleStepStart(raw map[string]any) {
 }
 
 func (s *opencodeSession) handleStepFinish(_ map[string]any) {
-	sid := s.CurrentSessionID()
-	evt := core.Event{Type: core.EventResult, SessionID: sid, Done: true}
-	select {
-	case s.events <- evt:
-	case <-s.ctx.Done():
-		return
-	}
 }
 
 // RespondPermission is a no-op — OpenCode handles permissions internally.
