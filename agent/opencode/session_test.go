@@ -133,7 +133,7 @@ func TestOpencodeSessionHandleErrorEvent(t *testing.T) {
 	}
 }
 
-func TestOpencodeSessionToolResultUsesToolResultField(t *testing.T) {
+func TestOpencodeSessionCompletedToolDoesNotEmitToolResult(t *testing.T) {
 	s, err := newOpencodeSession(context.Background(), writeFakeOpencode(t), ".", "", "default", "", nil)
 	if err != nil {
 		t.Fatalf("newOpencodeSession() error = %v", err)
@@ -150,15 +150,10 @@ func TestOpencodeSessionToolResultUsesToolResultField(t *testing.T) {
 		},
 	})
 
-	event := <-s.Events()
-	if event.Type != core.EventToolResult {
-		t.Fatalf("event type = %q, want %q", event.Type, core.EventToolResult)
-	}
-	if event.ToolResult != "done" {
-		t.Fatalf("tool result = %q, want %q", event.ToolResult, "done")
-	}
-	if event.Content != "" {
-		t.Fatalf("event content = %q, want empty string", event.Content)
+	select {
+	case event := <-s.Events():
+		t.Fatalf("unexpected event = %+v, want no tool result event", event)
+	case <-time.After(100 * time.Millisecond):
 	}
 }
 

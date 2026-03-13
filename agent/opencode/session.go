@@ -362,22 +362,7 @@ func (s *opencodeSession) handleToolUse(raw map[string]any) {
 	}
 
 	if status == "completed" {
-		// Tool result
-		output := lookupString(state, "output", "result", "content")
-		if state != nil {
-			if output == "" {
-				if outputMap, ok := state["output"].(map[string]any); ok {
-					b, _ := json.Marshal(outputMap)
-					output = string(b)
-				}
-			}
-		}
-		evt := core.Event{Type: core.EventToolResult, ToolName: toolName, ToolResult: truncate(output, 500)}
-		select {
-		case s.events <- evt:
-		case <-s.ctx.Done():
-			return
-		}
+		return
 	} else {
 		// Tool use (running or starting)
 		input := ""
