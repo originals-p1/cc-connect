@@ -20,7 +20,7 @@ PLATFORMS := \
   windows/amd64 \
   windows/arm64
 
-.PHONY: build install run clean test lint check-harness generate-repo-index release release-all
+.PHONY: build install run clean test lint release release-all
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o $(APP) $(CMD)
@@ -40,12 +40,6 @@ test:
 
 lint:
 	golangci-lint run ./...
-
-check-harness:
-	bash scripts/check_harness.sh
-
-generate-repo-index:
-	python3 scripts/generate_repo_index.py
 
 release-all: clean
 	@mkdir -p $(DIST)
