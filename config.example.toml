@@ -671,7 +671,41 @@ app_secret = "your-feishu-app-secret"
 # app_secret = "your-feishu-app-secret"
 
 # =============================================================================
-# Project 4: Using Codex agent / 项目 4：使用 Codex agent (uncomment to enable / 取消注释以启用)
+# Project 4: Using GitHub Copilot CLI / 项目 4：使用 GitHub Copilot CLI (uncomment to enable / 取消注释以启用)
+# =============================================================================
+# Requires: GitHub Copilot CLI installed and authenticated
+# 需要安装并完成认证：GitHub Copilot CLI
+# Copilot uses `copilot --acp --stdio` under the hood.
+# Copilot 底层使用 `copilot --acp --stdio` 命令。
+#
+# [[projects]]
+# name = "my-copilot-project"
+#
+# [projects.agent]
+# type = "copilot"
+#
+# [projects.agent.options]
+# work_dir = "/path/to/project"
+# cmd = "copilot"     # CLI binary name (default: "copilot") / CLI 二进制名称（默认 "copilot"）
+# mode = "ask"        # "ask" | "plan" | "allow-all" | "yolo"
+#
+# Mode options / 模式说明:
+# - "ask":       Ask before sensitive operations (default) / 敏感操作前先询问（默认）
+# - "plan":      Plan-first mode / 先规划再执行
+# - "allow-all": Auto-approve tool/path permissions / 自动批准工具和路径权限
+# - "yolo":      Maximum autonomy with broad approvals / 最大化自治并放宽权限
+#
+# Optional: specify a model when the ACP server advertises it / 可选：在 ACP 服务端声明支持时指定模型
+# model = "gpt-5"
+#
+# [[projects.platforms]]
+# type = "telegram"
+#
+# [projects.platforms.options]
+# token = "your-telegram-bot-token"
+
+# =============================================================================
+# Project 5: Using Codex agent / 项目 5：使用 Codex agent (uncomment to enable / 取消注释以启用)
 # =============================================================================
 # Requires: npm install -g @openai/codex
 # 需要安装：npm install -g @openai/codex

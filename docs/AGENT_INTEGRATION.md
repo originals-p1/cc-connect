@@ -72,6 +72,15 @@ import (
 )
 ```
 
+新增 CLI agent 时，优先选择其机器可读协议或结构化事件流接口，例如：
+
+- Claude Code: `--input-format stream-json`
+- Codex: `codex exec --json`
+- Gemini CLI: `--output-format stream-json`
+- GitHub Copilot CLI: `--acp --stdio`
+
+不要优先解析面向人类的 TUI 输出，除非该 CLI 没有更稳定的集成协议。
+
 ### 配置示例
 
 在 `config.example.toml` 中添加：

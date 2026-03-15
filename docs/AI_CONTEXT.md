@@ -14,7 +14,7 @@
 ## 1. 项目概览
 
 - **名称**: cc-connect  
-- **作用**: 将本地运行的 AI 编程 Agent（Claude Code、Codex、Cursor、Gemini CLI 等）桥接到即时通讯平台（飞书、钉钉、Slack、Telegram、Discord、企业微信、LINE、QQ 等），使用户可在聊天应用中远程操控 Agent。
+- **作用**: 将本地运行的 AI 编程 Agent（Claude Code、GitHub Copilot CLI、Codex、Cursor、Gemini CLI 等）桥接到即时通讯平台（飞书、钉钉、Slack、Telegram、Discord、企业微信、LINE、QQ 等），使用户可在聊天应用中远程操控 Agent。
 - **语言**: Go 1.22+  
 - **配置**: TOML（`config.toml`），支持多项目、多平台、多 Agent 类型。  
 - **入口**: 主程序为 `cmd/cc-connect/main.go`，通过 `core.NewEngine` 为每个 `[[projects]]` 创建一个 `Engine`，负责消息路由与斜杠命令。
@@ -81,6 +81,7 @@ cc-connect/
 │   └── qqbot/qqbot.go
 ├── agent/                    # Agent 实现（均含 init 中 RegisterAgent）
 │   ├── claudecode/claudecode.go  # Claude Code CLI
+│   ├── copilot/copilot.go
 │   ├── codex/codex.go
 │   ├── cursor/cursor.go
 │   ├── gemini/gemini.go
@@ -206,7 +207,7 @@ type Agent interface {
 | 会话管理                 | `core/session.go` |
 | 配置加载与结构           | `config/config.go` |
 | 示例平台实现             | `platform/telegram/telegram.go` |
-| 示例 Agent 实现         | `agent/claudecode/claudecode.go` |
+| 示例 Agent 实现         | `agent/claudecode/claudecode.go`、`agent/copilot/copilot.go` |
 | 多语言文案               | `core/i18n.go` |
 | 安装与配置（给 AI 用）   | `INSTALL.md` |
 

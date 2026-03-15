@@ -25,7 +25,7 @@ cc-connect bridges AI agents running on your machine to the messaging platforms 
               └────────────┘
               ┌─────┼─────┐
               ▼     ▼     ▼
-         Claude  Gemini  Codex  ...7 agents
+         Claude  Copilot Gemini ...8 agents
           Code    CLI   OpenCode / iFlow
 ```
 
@@ -33,7 +33,7 @@ cc-connect bridges AI agents running on your machine to the messaging platforms 
 
 > Time to uninstall OpenClaw — cc-connect gives you access to the most powerful AI agents available, not just one.
 
-- **7 AI Agents** — Claude Code, Codex, Cursor Agent, Qoder CLI, Gemini CLI, OpenCode, iFlow CLI. Use whichever fits your workflow, or all of them at once.
+- **8 AI Agents** — Claude Code, GitHub Copilot CLI, Codex, Cursor Agent, Qoder CLI, Gemini CLI, OpenCode, iFlow CLI. Use whichever fits your workflow, or all of them at once.
 - **9 Chat Platforms** — Feishu, DingTalk, Slack, Telegram, Discord, WeChat Work, LINE, QQ, QQ Bot (Official). Most need zero public IP.
 - **Multi-Bot Relay** — Bind multiple bots in a group chat and let them communicate with each other. Ask Claude, get insights from Gemini — all in one conversation.
 - **Full Control from Chat** — Switch models (`/model`), change permission modes (`/mode`), manage sessions, all via slash commands.
@@ -56,6 +56,7 @@ cc-connect bridges AI agents running on your machine to the messaging platforms 
 | Component | Type | Status |
 |-----------|------|--------|
 | Agent | Claude Code | ✅ Supported |
+| Agent | GitHub Copilot CLI | ✅ Supported |
 | Agent | Codex (OpenAI) | ✅ Supported |
 | Agent | Cursor Agent | ✅ Supported |
 | Agent | Gemini CLI (Google) | ✅ Supported |
@@ -93,6 +94,7 @@ cc-connect bridges AI agents running on your machine to the messaging platforms 
 ### Prerequisites
 
 - **Claude Code**: [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and configured, OR
+- **GitHub Copilot CLI**: [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli) installed and authenticated, OR
 - **Codex**: [Codex CLI](https://github.com/openai/codex) installed (`npm install -g @openai/codex`), OR
 - **Cursor Agent**: [Cursor Agent CLI](https://docs.cursor.com/agent) installed (`agent --version` to verify), OR
 - **Gemini CLI**: [Gemini CLI](https://github.com/google-gemini/gemini-cli) installed (`npm install -g @google/gemini-cli`), OR
@@ -812,16 +814,16 @@ type = "feishu"
 app_id = "cli_xxxx"
 app_secret = "xxxx"
 
-# Project 2 — Codex agent with Telegram
+# Project 2 — GitHub Copilot CLI with Telegram
 [[projects]]
 name = "my-frontend"
 
 [projects.agent]
-type = "codex"
+type = "copilot"
 
 [projects.agent.options]
 work_dir = "/path/to/frontend"
-mode = "full-auto"
+mode = "ask"
 
 [[projects.platforms]]
 type = "telegram"
