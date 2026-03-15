@@ -25,7 +25,7 @@ cc-connect 把运行在你机器上的 AI Agent 桥接到你日常使用的即�
               └────────────┘
               ┌─────┼─────┐
               ▼     ▼     ▼
-         Claude  Gemini  Codex  ...7 个 Agent
+         Claude Copilot Gemini ...8 个 Agent
           Code    CLI   OpenCode / iFlow
 ```
 
@@ -33,7 +33,7 @@ cc-connect 把运行在你机器上的 AI Agent 桥接到你日常使用的即�
 
 > 是时候卸载 OpenClaw 了 — cc-connect 让你同时拥有最强的那几个 AI Agent，而不只是一个。
 
-- **7 大 AI Agent** — Claude Code、Codex、Cursor Agent、Qoder CLI、Gemini CLI、OpenCode、iFlow CLI，按需选用，也可以同时使用
+- **8 大 AI Agent** — Claude Code、GitHub Copilot CLI、Codex、Cursor Agent、Qoder CLI、Gemini CLI、OpenCode、iFlow CLI，按需选用，也可以同时使用
 - **9 大聊天平台** — 飞书、钉钉、Slack、Telegram、Discord、企业微信、LINE、QQ、QQ 官方机器人，大部分无需公网 IP
 - **多机器人中继** — 在群聊中绑定多个机器人，让它们相互协作。问 Claude，再听 Gemini 的见解 — 同一个对话搞定
 - **聊天即控制** — 切换模型 `/model`、切换权限 `/mode`、管理会话，全部通过斜杠命令完成
@@ -56,6 +56,7 @@ cc-connect 把运行在你机器上的 AI Agent 桥接到你日常使用的即�
 | 组件 | 类型 | 状态 |
 |------|------|------|
 | Agent | Claude Code | ✅ 已支持 |
+| Agent | GitHub Copilot CLI | ✅ 已支持 |
 | Agent | Codex (OpenAI) | ✅ 已支持 |
 | Agent | Cursor Agent | ✅ 已支持 |
 | Agent | Gemini CLI (Google) | ✅ 已支持 |
@@ -92,6 +93,7 @@ cc-connect 把运行在你机器上的 AI Agent 桥接到你日常使用的即�
 ### 前置条件
 
 - **Claude Code**: [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) 已安装并配置，或
+- **GitHub Copilot CLI**: [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli) 已安装并完成认证，或
 - **Codex**: [Codex CLI](https://github.com/openai/codex) 已安装（`npm install -g @openai/codex`），或
 - **Cursor Agent**: [Cursor Agent CLI](https://docs.cursor.com/agent) 已安装（`agent --version` 验证），或
 - **Gemini CLI**: [Gemini CLI](https://github.com/google-gemini/gemini-cli) 已安装（`npm install -g @google/gemini-cli`），或
@@ -264,6 +266,15 @@ app_secret = "your-app-secret"
 | **计划模式** | `plan` | Claude 只做规划不执行，审批计划后再执行。 |
 | **YOLO 模式** | `bypassPermissions`（别名: `yolo`）| 所有工具调用自动通过。适用于可信/沙箱环境。 |
 
+**GitHub Copilot CLI** 模式（通过 ACP session mode/config option 应用）：
+
+| 模式 | 配置值 | 行为 |
+|------|--------|------|
+| **询问模式** | `ask` | 敏感操作前询问（默认）。 |
+| **规划模式** | `plan` | 先规划，再决定是否执行。 |
+| **自动批准** | `allow-all` | 自动批准工具和路径权限。 |
+| **YOLO 模式** | `yolo` | 最大化自治并放宽权限。 |
+
 **Codex** 模式（对应 `--ask-for-approval`）：
 
 | 模式 | 配置值 | 行为 |
@@ -319,6 +330,11 @@ app_secret = "your-app-secret"
 [projects.agent.options]
 mode = "default"
 # allowed_tools = ["Read", "Grep", "Glob"]
+
+# GitHub Copilot CLI
+[projects.agent.options]
+mode = "ask"
+# model = "gpt-5"
 
 # Codex
 [projects.agent.options]
@@ -614,10 +630,11 @@ cc-connect cron del <job-id>
 
 Claude Code 会通过 `--append-system-prompt` 自动将你的请求转为 `cc-connect cron add` 命令。
 
-**其他 Agent**（Codex、Cursor、Gemini CLI、Qoder CLI、OpenCode、iFlow CLI）需要在项目根目录的 Agent 指令文件中添加说明，让 Agent 知道如何创建定时任务。将以下内容添加到对应文件中：
+**其他 Agent**（GitHub Copilot CLI、Codex、Cursor、Gemini CLI、Qoder CLI、OpenCode、iFlow CLI）需要在项目根目录的 Agent 指令文件中添加说明，让 Agent 知道如何创建定时任务。将以下内容添加到对应文件中：
 
 | Agent | 指令文件 |
 |-------|---------|
+| GitHub Copilot CLI | `.github/copilot-instructions.md`（项目级）、`~/.copilot/copilot-instructions.md`（全局） |
 | Codex | `AGENTS.md` |
 | Cursor | `.cursorrules` |
 | Qoder CLI | `AGENTS.md`（项目级）、`~/.qoder/AGENTS.md`（全局） |
@@ -755,16 +772,16 @@ type = "feishu"
 app_id = "cli_xxxx"
 app_secret = "xxxx"
 
-# 项目 2 —— 使用 Codex 搭配 Telegram
+# 项目 2 —— 使用 GitHub Copilot CLI 搭配 Telegram
 [[projects]]
 name = "my-frontend"
 
 [projects.agent]
-type = "codex"
+type = "copilot"
 
 [projects.agent.options]
 work_dir = "/path/to/frontend"
-mode = "full-auto"
+mode = "ask"
 
 [[projects.platforms]]
 type = "telegram"
@@ -833,6 +850,7 @@ cc-connect/
 │   └── qqbot/               # QQ 官方机器人（Official API v2 WebSocket）
 ├── agent/                   # AI 助手适配器
 │   ├── claudecode/          # Claude Code CLI（交互式会话）
+│   ├── copilot/             # GitHub Copilot CLI（ACP / stdio）
 │   ├── codex/               # OpenAI Codex CLI（exec --json）
 │   ├── cursor/              # Cursor Agent CLI（--print stream-json）
 │   ├── qoder/               # Qoder CLI（-p -f stream-json）
