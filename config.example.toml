@@ -293,46 +293,63 @@ level = "info" # debug, info, warn, error
 #
 
 # =============================================================================
-# Bot Switching Mode / Bot 切换模式
+# Recommended: Bot Switching Mode / 推荐：Bot 切换模式
 # =============================================================================
-# Alternative to fixed [[projects]] mode:
-# 一个 bot 保持固定 agent/platform 配置，在运行时按私聊用户切换项目。
+# This is the recommended setup for most users:
+# 这是大多数用户的推荐配置方式：
+# - one bot keeps a fixed agent + platform setup
+# - the active work_dir is switched per DM user at runtime
+# - easier to operate than maintaining many fixed [[projects]] entries
+#
+# - 一个 bot 保持固定的 agent + platform 配置
+# - 运行时按私聊用户切换 work_dir
+# - 比维护大量固定 [[projects]] 更适合日常使用
 #
 # Rules / 规则:
 # - `workspace.root` is scanned only one level deep / 只扫描 workspace.root 下一层目录
 # - `require_git = true` keeps only directories with `.git` / 只保留带 `.git` 的目录
 # - project binding is keyed by platform + user + bot / 绑定按 platform + user + bot 维度保存
 # - when `dm_only = true`, `/project ...` and normal chat routing only work in DM / 私聊可用
+# - if you use `[[bots]]`, you usually do NOT need `[[projects]]` below / 使用 `[[bots]]` 时，通常不需要下面的 `[[projects]]`
 
 # [workspace]
-# root = "/path/to/workspace"
-# require_git = true
+# root = "/path/to/workspace"  # Workspace root containing many repos / 包含多个仓库的工作区根目录
+# require_git = true           # Only list git repos / 仅列出 git 仓库
 
 # [[bots]]
-# name = "codex-switcher"
-# agent_type = "codex"
+# name = "copilot-switcher"
+# agent_type = "copilot"
 # default_project = "repo-a"   # optional: auto-select on first DM / 可选：首次私聊自动选中
 # max_cached_sessions = 3
 # dm_only = true
 #
 # [bots.agent_options]
-# model = "o3"
-# mode = "full-auto"
+# mode = "ask"          # ask | plan | allow-all | yolo
+# # model = "gpt-5"     # optional; only works when Copilot ACP advertises it / 可选；仅在 Copilot ACP 声明支持时生效
 #
 # [[bots.platforms]]
 # type = "telegram"
 #
 # [bots.platforms.options]
 # token = "123456:ABC-xxx"
+# allow_from = "123456789"
+# proxy = "http://127.0.0.1:7890"
 #
 # Runtime commands / 运行时命令:
 #   /project list
 #   /project current
 #   /project switch <name>
+#   /new <title>
+#
+# You can define multiple bots (for example one Copilot bot + one Codex bot)
+# sharing the same workspace root.
+# 你也可以定义多个 bot（例如一个 Copilot bot + 一个 Codex bot），共享同一个 workspace root。
 
 # =============================================================================
-# Project 1 / 项目 1
+# Fixed Projects Mode (Optional) / 固定项目模式（可选）
 # =============================================================================
+# Use this only when you explicitly want one config entry per project.
+# 只有在你明确需要“每个项目一个固定配置”时才使用。
 
 [[projects]]
 name = "my-backend"

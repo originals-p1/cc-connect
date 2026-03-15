@@ -146,6 +146,41 @@ vim ~/.cc-connect/config.toml
 cp config.example.toml config.toml
 ```
 
+推荐优先使用 **Bot 模式**，也就是 `[workspace] + [[bots]]` 的组合，而不是一开始就维护很多 `[[projects]]`。Bot 模式下，一个机器人固定使用某个 Agent 和平台配置，但会在私聊里按用户切换当前项目目录，更适合日常主力使用。
+
+最小 Bot 模式示例：
+
+```toml
+[workspace]
+root = "/path/to/workspace"
+require_git = true
+
+[[bots]]
+name = "copilot-switcher"
+agent_type = "copilot"
+default_project = "repo-a"
+max_cached_sessions = 3
+dm_only = true
+
+[bots.agent_options]
+mode = "ask"
+# model = "gpt-5"
+
+[[bots.platforms]]
+type = "telegram"
+
+[bots.platforms.options]
+token = "123456:ABC-xxx"
+allow_from = "your-telegram-user-id"
+```
+
+Bot 模式常用命令：
+
+- `/project list`
+- `/project current`
+- `/project switch <name>`
+- `/new <title>`
+
 ### 运行
 
 ```bash
@@ -182,6 +217,7 @@ cc-connect update --pre             # 内测版（含 pre-release）
 | QQ 官方机器人 | [docs/qqbot.md](docs/qqbot.md) | WebSocket (官方 API) | 不需要 |
 
 各平台快速配置示例：
+Bot 模式下把 `projects.platforms` 换成 `bots.platforms` 即可，字段完全相同。
 
 ```toml
 # 飞书
@@ -751,6 +787,47 @@ cc-connect relay send --to gemini "你觉得这个架构怎么样？"
 
 ## 配置说明
 
+### 推荐：Bot 模式
+
+如果你的工作区里有多个仓库，推荐优先使用 `[[bots]]`，而不是为每个仓库都写一个 `[[projects]]`。Bot 模式的优点是：
+
+- 一个机器人对应一种 Agent 工作流，心智模型更简单
+- 私聊里可以随时切项目，不需要改配置和重启
+- 更适合主力日常使用；`[[projects]]` 更适合固定路由或长期驻留的专用机器人
+
+Bot 模式示例：
+
+```toml
+[workspace]
+root = "/path/to/workspace"
+require_git = true
+
+[[bots]]
+name = "copilot-switcher"
+agent_type = "copilot"
+default_project = "repo-a"
+max_cached_sessions = 3
+dm_only = true
+
+[bots.agent_options]
+mode = "ask"
+
+[[bots.platforms]]
+type = "telegram"
+
+[bots.platforms.options]
+token = "123456:ABC-xxx"
+```
+
+运行时命令：
+
+- `/project list`
+- `/project current`
+- `/project switch <name>`
+- `/new <title>`
+
+### 固定项目模式（可选）
+
 每个 `[[projects]]` 将一个代码目录绑定到独立的 agent 和平台。单个 cc-connect 进程可以同时管理多个项目。
 
 ```toml
@@ -790,7 +867,7 @@ type = "telegram"
 token = "xxxx"
 ```
 
-完整带注释的配置模板见 [config.example.toml](config.example.toml)。
+完整带注释的配置模板见 [config.example.toml](config.example.toml)。如果你是第一次部署，建议先从其中的 `Bot 切换模式` 段开始。
 
 ## 扩展开发
 

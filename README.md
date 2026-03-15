@@ -147,6 +147,41 @@ vim ~/.cc-connect/config.toml
 cp config.example.toml config.toml
 ```
 
+Recommended default: use **bot mode** with `[workspace] + [[bots]]` instead of starting with many fixed `[[projects]]` entries. In bot mode, one bot keeps a fixed agent/platform setup and switches the active repo per DM user at runtime, which is usually the best day-to-day workflow.
+
+Minimal bot mode example:
+
+```toml
+[workspace]
+root = "/path/to/workspace"
+require_git = true
+
+[[bots]]
+name = "copilot-switcher"
+agent_type = "copilot"
+default_project = "repo-a"
+max_cached_sessions = 3
+dm_only = true
+
+[bots.agent_options]
+mode = "ask"
+# model = "gpt-5"
+
+[[bots.platforms]]
+type = "telegram"
+
+[bots.platforms.options]
+token = "123456:ABC-xxx"
+allow_from = "your-telegram-user-id"
+```
+
+Common bot mode commands:
+
+- `/project list`
+- `/project current`
+- `/project switch <name>`
+- `/new <title>`
+
 ### Run
 
 ```bash
@@ -184,6 +219,7 @@ Each platform requires creating a bot/app on the platform's developer console. W
 | QQ Bot (Official) | [docs/qqbot.md](docs/qqbot.md) | WebSocket (Official API) | No |
 
 Quick config examples for each platform:
+In bot mode, replace `projects.platforms` with `bots.platforms`; the fields are identical.
 
 ```toml
 # Feishu
@@ -793,6 +829,47 @@ This enables powerful workflows like:
 
 ## Configuration
 
+### Recommended: Bot Mode
+
+If your workspace contains multiple repos, prefer `[[bots]]` over defining one `[[projects]]` entry per repo. Bot mode is the recommended primary workflow because:
+
+- one bot maps cleanly to one agent workflow
+- users can switch repos in DM without editing config or restarting
+- it scales better for daily use; fixed `[[projects]]` is better for dedicated always-on routing
+
+Bot mode example:
+
+```toml
+[workspace]
+root = "/path/to/workspace"
+require_git = true
+
+[[bots]]
+name = "copilot-switcher"
+agent_type = "copilot"
+default_project = "repo-a"
+max_cached_sessions = 3
+dm_only = true
+
+[bots.agent_options]
+mode = "ask"
+
+[[bots.platforms]]
+type = "telegram"
+
+[bots.platforms.options]
+token = "123456:ABC-xxx"
+```
+
+Runtime commands:
+
+- `/project list`
+- `/project current`
+- `/project switch <name>`
+- `/new <title>`
+
+### Fixed Projects Mode
+
 Each `[[projects]]` entry binds one code directory to its own agent and platforms. A single cc-connect process can manage multiple projects simultaneously.
 
 ```toml
@@ -832,38 +909,7 @@ type = "telegram"
 token = "xxxx"
 ```
 
-See [config.example.toml](config.example.toml) for a fully commented configuration template.
-
-For project-switching bot mode, use one shared workspace plus `[[bots]]` instead of fixed `[[projects]]` entries. In this mode, the bot keeps a fixed agent/platform setup and switches `work_dir` per DM user at runtime:
-
-```toml
-[workspace]
-root = "/path/to/workspace"
-require_git = true
-
-[[bots]]
-name = "codex-switcher"
-agent_type = "codex"
-default_project = "repo-a"
-max_cached_sessions = 3
-dm_only = true
-
-[bots.agent_options]
-model = "o3"
-mode = "full-auto"
-
-[[bots.platforms]]
-type = "telegram"
-
-[bots.platforms.options]
-token = "123456:ABC-xxx"
-```
-
-Runtime commands in bot mode:
-
-- `/project list`
-- `/project current`
-- `/project switch <name>`
+See [config.example.toml](config.example.toml) for a fully commented configuration template. For a first deployment, start with the bot mode section.
 
 Notes:
 
