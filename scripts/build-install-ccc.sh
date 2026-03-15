@@ -27,8 +27,8 @@ if [[ "${GOOS}" == "windows" ]]; then
   EXT=".exe"
 fi
 
-SRC="${ROOT_DIR}/dist/${GOOS}-${GOARCH}/ccc${EXT}"
-DEST="${INSTALL_DIR}/ccc${EXT}"
+SRC="${ROOT_DIR}/dist/${GOOS}-${GOARCH}/cc-connect${EXT}"
+DEST="${INSTALL_DIR}/cc-connect${EXT}"
 
 mkdir -p "${INSTALL_DIR}"
 install -m 0755 "${SRC}" "${DEST}"

@@ -35,7 +35,7 @@ if [[ "${GOOS}" == "windows" ]]; then
 fi
 
 OUT_DIR="${DIST_DIR}/${GOOS}-${GOARCH}"
-OUT_PATH="${OUT_DIR}/ccc${EXT}"
+OUT_PATH="${OUT_DIR}/cc-connect${EXT}"
 
 mkdir -p "${OUT_DIR}"
 
